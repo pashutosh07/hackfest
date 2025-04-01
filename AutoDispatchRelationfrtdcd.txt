@@ -1,0 +1,444 @@
+<div class="container-fluid mx-0 px-0">
+  <h2 class="pt-2 mb-0">Maintain Supplier Relations</h2>
+  <p-tabView>
+    <p-tabPanel header="Auto Dispatch Relations">
+      <div class="row">
+        <div class="col-md-12">
+          <p-table class="table table-sm rounded mt-auto ml-auto pt-auto pb-auto"
+                   [value]="autoDispatchRelations" sortField="supplierNo" [sortOrder]="1"
+                   [scrollable]="true" scrollHeight="60vh" styleClass="p-datatable-gridlines p-datatable-sm">
+            <ng-template pTemplate="caption">
+              <div class="table-header row">
+                <div class="col">
+                  <button type="submit" class="btn btn-sm btn-primary float-right mx-1" (click)="showAddAutoDispatchDialog()">Add Relation
+                  </button>
+                </div>
+              </div>
+            </ng-template>
+            <ng-template pTemplate="emptymessage">
+              <tr>
+                <td colspan="7" class="text-center">
+                  <span *ngIf="!autoDispatchRelations">Loading data for Auto Dispatch Relations</span>
+                  <span *ngIf="autoDispatchRelations?.length === 0">
+                <nile-message type="error">
+                  No record is available for Auto Dispatch Relations!
+                </nile-message>
+              </span>
+                </td>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="header">
+              <tr>
+                <th scope="col" pSortableColumn="supplierNo">Nile Supplier Number
+                  <p-columnFilter type="text" field="supplierNo" display="menu"></p-columnFilter>
+                  <p-sortIcon field="supplierNo"></p-sortIcon>
+                </th>
+                <th scope="col" pSortableColumn="organisationName">Nile Organisation Name
+                  <p-sortIcon field="pSortableColumn"></p-sortIcon>
+                </th>
+                <th scope="col" pSortableColumn="webstarSubSupplier">Webstar Sub Supplier
+                  <p-columnFilter type="text" field="webstarSubSupplier" display="menu"></p-columnFilter>
+                  <p-sortIcon field="webstarSubSupplier"></p-sortIcon>
+                </th>
+                <th scope="col" pSortableColumn="webstarMainSupplier">Webstar Main Supplier
+                  <p-columnFilter type="text" field="webstarMainSupplier" display="menu"></p-columnFilter>
+                  <p-sortIcon field="webstarMainSupplier"></p-sortIcon>
+                </th>
+                <th scope="col" pSortableColumn="createdDate">Creation Date
+                  <p-columnFilter type="text" field="createdDate" display="menu"></p-columnFilter>
+                  <p-sortIcon field="createdDate"></p-sortIcon>
+                </th>
+                <th scope="col">Actions</th>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="body" let-movement>
+              <tr>
+                <td>{{ movement.supplierNo }}</td>
+                <td>{{ movement.organisationName }}</td>
+                <td>{{ movement.webstarSubSupplier }}</td>
+                <td>{{ movement.webstarMainSupplier }}</td>
+                <td>{{ movement.createdDate | date:'yyyy-MM-dd' }}</td>
+                <td>
+                  <button class="btn btn-outline-dark py-0 mr-2" pTooltip="Delete" (click)="deleteConfirmationAutoDispatchRelation(movement.id)">
+                    <i class="pi pi-trash"></i>
+                  </button>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </div>
+   </p-tabPanel>
+
+    <p-tabPanel header="Sub Suppliers">
+      <p-progressBar *ngIf="!subSupplierDetailsList" mode="indeterminate" styleClass="nile-progress-bar"></p-progressBar>
+      <p-table [value]="subSupplierDetailsList" sortField="sender" scrollHeight="60vh" responsiveLayout="scroll"
+               [autoLayout]="true" [resizableColumns]="true" styleClass="p-datatable-gridlines p-datatable-stripped p-datatable-sm">
+        <ng-template pTemplate="caption">
+          <div class="table-header row">
+            <div class="col">
+              <button type="submit" class="btn btn-sm btn-primary float-right mx-1" (click)="addSubSupplierRelation()">Add Relation</button>
+            </div>
+          </div>
+        </ng-template>
+        <ng-template pTemplate="emptymessage">
+          <tr>
+            <td colspan="9" class="text-center">
+              <span *ngIf="!subSupplierDetailsList">Loading data for Sub Suppliers</span>
+              <span *ngIf="subSupplierDetailsList?.length === 0">
+                <nile-message type="error">
+                  No record is available for Sub Supplier Details!
+                </nile-message>
+              </span>
+            </td>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="header">
+          <tr>
+            <th scope="col" class="w-5" pSortableColumn="sender">Main Supplier
+              <p-columnFilter type="text" field="mainSupplier" display="menu" class="mx-2"></p-columnFilter>
+              <p-sortIcon [field]="'mainSupplier'"></p-sortIcon>
+            </th>
+            <th scope="col" class="w-20" pSortableColumn="mainSupplierName">Main Supplier Name
+              <p-sortIcon [field]="'mainSupplierName'"></p-sortIcon>
+            </th>
+            <th scope="col" class="w-5" pSortableColumn="receiver">Sub Supplier
+              <p-columnFilter type="text" field="subSupplier" display="menu" class="mx-2"></p-columnFilter>
+              <p-sortIcon [field]="'subSupplier'"></p-sortIcon>
+            </th>
+            <th scope="col" class="w-20" pSortableColumn="subSupplierName">Sub Supplier Name
+              <p-sortIcon [field]="'subSupplierName'"></p-sortIcon>
+            </th>
+            <th scope="col" pSortableColumn="partAvailable" class="w-5 z-index-1 text-center">Assigned Parts Letter
+              <p-columnFilter field="partAvailable" display="menu" matchMode="equals">
+                <ng-template pTemplate="filter" let-value="value" let-filter="filterCallback">
+                  <p-dropdown (onChange)="filter($event.value)" [ngModel]="value" [options]="yesNoCodes" placeholder="Any" appendTo="body">
+                    <ng-template let-option pTemplate="item">
+                      <p-tag [value]="option"/>
+                    </ng-template>
+                  </p-dropdown>
+                </ng-template>
+              </p-columnFilter>
+              <p-sortIcon [field]="'partsAssigned'"></p-sortIcon>
+            </th>
+            <th scope="col" class="w-20" pSortableColumn="comments">Comments
+              <p-sortIcon [field]="'comments'"></p-sortIcon>
+            </th>
+            <th scope="col" class="w-15" pSortableColumn="modifiedBy">Modified By
+              <p-sortIcon [field]="'modifiedBy'"></p-sortIcon>
+            </th>
+            <th scope="col" class="w-5" pSortableColumn="modifiedDate">Modified Date
+              <p-sortIcon [field]="'modifiedDate'"></p-sortIcon>
+            </th>
+            <th scope="col" class="w-5" pResizableColumn>Action</th>
+          </tr>
+        </ng-template>
+
+        <ng-template pTemplate="body" let-subSupplier>
+          <tr>
+            <td class="w-5">{{ subSupplier.mainSupplier }}</td>
+            <td class="w-20 truncate" pTooltip="{{subSupplier.mainSupplierName}}">{{ subSupplier.mainSupplierName}}</td>
+            <td class="w-5">{{ subSupplier.subSupplier }}</td>
+            <td class="w-20 truncate" pTooltip="{{subSupplier.subSupplierName}}"> {{ subSupplier.subSupplierName}}</td>
+            <td class="w-5 text-center"><p-checkbox class="z-index-0" [(ngModel)]="subSupplier.partAssigned" binary="true" disabled="true"></p-checkbox></td>
+            <td class="w-20 truncate" pTooltip="{{ subSupplier.comments }}" >{{ subSupplier.comments }}</td>
+            <td class="w-15 truncate" pTooltip="{{ subSupplier.modifiedBy }}">{{ subSupplier.modifiedBy }}</td>
+            <td class="w-5">{{ subSupplier.modifiedDate | date: 'yyyy-MM-dd' }}</td>
+            <td class="w-5">
+              <button type="submit" class="btn btn-outline-dark py-0 mr-2" pTooltip="Remove Sub Supplier" (click)="deleteConfirmationSupplierRelation(subSupplier.supplierId)">
+                <i class="pi pi-trash"></i>
+              </button>
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </p-tabPanel>
+  </p-tabView>
+</div>
+
+<p-dialog header="Add Sub-Supplier Relation" [(visible)]="showAddRelationSubSupplier" *ngIf="showAddRelationSubSupplier" [modal]="true" [closable]="false" [styleClass]="'nile-popup'">
+  <div class="row">
+    <!-- Error Messages -->
+    <div class="col-sm-12 mb-2" *ngIf="supplierForMainSupplier && supplierForSubSupplier && supplierForMainSupplier?.packUserId === supplierForSubSupplier?.packUserId" id="errorMessages">
+      <nile-message type="error">
+        Main supplier and Sub-supplier should be different
+      </nile-message>
+    </div>
+    <div class="col-md-2 font-weight-bold pr-0 my-1">Main Supplier:</div>
+    <div class="col-md-10 my-1">
+      <app-organisation-search [organisations]="packUsers" [selectedOrganisation]="supplierForMainSupplier" *ngIf="subSupplierDetails"
+                               (organisationSelection)="getOrganisationSelectionForMainSupplier($event)" [showName]="true" [showNameHeader]="false"></app-organisation-search>
+    </div>
+    <div class="col-md-2 font-weight-bold pr-0 my-1">Sub-Supplier:</div>
+    <div class="col-md-10 my-1">
+      <app-organisation-search [organisations]="packUsers" [selectedOrganisation]="supplierForSubSupplier" *ngIf="subSupplierDetails"
+                               (organisationSelection)="getOrganisationSelectionForSubSupplier($event)" [showName]="true" [showNameHeader]="false"></app-organisation-search>
+    </div>
+    <div class="col-md-2 font-weight-bold pr-0 my-1">Assigned Part Letter:</div>
+    <div class="col-md-10 my-1"><input type="checkbox" [(ngModel)]="subSupplierDetails.partAssigned" [disabled]="!supplierForMainSupplier"></div>
+    <div class="col-md-2 font-weight-bold pr-0 my-1">Comments:</div>
+    <div class="col-md-10 my-1">
+      <textarea class="mt-2 w-75 form-control form-control-sm" [(ngModel)]="subSupplierDetails.comments" [disabled]="!supplierForMainSupplier" maxlength="250" rows="2"></textarea>
+    </div>
+    <div class="col-md-12 mt-2">
+      <button type="button" class="btn btn-outline-dark" (click)="showAddRelationSubSupplier = false">Cancel</button>
+      <button type="submit" class="btn btn-primary float-right" (click)="saveSupplierRelation()"
+              [disabled]="!supplierForMainSupplier || !supplierForSubSupplier ||
+                          (supplierForMainSupplier?.packUserId !== 0 && supplierForMainSupplier?.packUserId === supplierForSubSupplier?.packUserId)">Save</button>
+    </div>
+  </div>
+</p-dialog>
+
+<p-dialog header="Add Auto Dispatch Relation" [(visible)]="showAddRelationAutoDispatch" *ngIf="showAddRelationAutoDispatch" [modal]="true" [closable]="false" styleClass="nile-popup">
+  <div class="row">
+    <div class="col-md-3 font-weight-bold pr-0 my-1">Nile Supplier Number:</div>
+    <div class="col-md-9 my-1" *ngIf="autoDispatchRelation && supplierForNileSupplier">
+      <app-organisation-search [organisations]="packUsers" [selectedOrganisation]="supplierForNileSupplier"
+                               (organisationSelection)="getOrganisationSelectionForNileSupplier($event)" [showName]="true" [showNameHeader]="false"></app-organisation-search>
+    </div>
+    <div class="col-md-3 font-weight-bold pr-0 my-1">Webstar Sub Supplier:</div>
+    <div class="col-md-9 my-1">
+      <input id="webstarSubSupplier" type="text" class="w-25 form-control form-control-sm" [(ngModel)]="autoDispatchRelation.webstarSubSupplier">
+    </div>
+    <div class="col-md-3 font-weight-bold pr-0 my-1">Webstar Main Supplier:</div>
+    <div class="col-md-9 my-1">
+      <input id="webstarMainSupplier" type="text" class="w-25 form-control form-control-sm" [(ngModel)]="autoDispatchRelation.webstarMainSupplier">
+    </div>
+    <div class="col-md-12 mt-2">
+      <button type="button" class="btn btn-outline-dark float-left" (click)="showAddRelationAutoDispatch = false">Cancel</button>
+      <button type="button" class="btn btn-primary float-right" (click)="saveAutoDispatchRelation()"
+              [disabled]="!autoDispatchRelation.webstarMainSupplier || !autoDispatchRelation.webstarSubSupplier || !autoDispatchRelation.supplierNo">Save
+      </button>
+    </div>
+  </div>
+</p-dialog>
+
+<p-confirmDialog styleClass="nile-popup-sm" [closable]="false"></p-confirmDialog>
+
+
+
+import {Component, OnInit} from '@angular/core';
+import {NileSharedService, ToastService} from '@app/shared/services';
+import {MaintainSupplierRelationsService} from './maintain-supplier-relations.service';
+import {SubSupplierDetails} from '@app/core/models/sub-supplier-details';
+import {Consignor} from '@app/core';
+import {ConfirmationService} from 'primeng/api';
+import {PackagingUsersService} from '@app/shared/services/packaging-users.service';
+import {NileUtils} from '@app/shared/utils/nile-utils';
+import {AutoDispatchRelation} from '@app/core/models/auto-dispatch-relation';
+
+@Component({
+  selector: 'app-maintain-supplier-relations',
+  templateUrl: './maintain-supplier-relations.component.html',
+  styleUrls: ['./maintain-supplier-relations.component.scss'],
+  providers: [ConfirmationService]
+})
+export class MaintainSupplierRelationsComponent implements OnInit {
+
+  constructor(private readonly nileSharedService: NileSharedService,
+              private readonly toastService: ToastService,
+              private readonly confirmationService: ConfirmationService,
+              private readonly packagingUsersService: PackagingUsersService,
+              private readonly maintainSupplierRelationService: MaintainSupplierRelationsService) {
+  }
+
+  autoDispatchRelations: AutoDispatchRelation[];
+  autoDispatchRelation: AutoDispatchRelation;
+  subSupplierDetailsList: SubSupplierDetails[];
+  subSupplierDetails: SubSupplierDetails;
+  showAddRelationSubSupplier = false;
+  showAddRelationAutoDispatch = false;
+  supplierForMainSupplier: Consignor;
+  supplierForSubSupplier: Consignor;
+  supplierForNileSupplier: Consignor;
+  packUsers: Consignor[];
+  yesNoCodes: string[];
+
+  protected readonly NileUtils = NileUtils;
+
+  ngOnInit() {
+    this.yesNoCodes = this.nileSharedService.getYesNoCodes();
+    this.getAutoDispatchRelations();
+    this.getSubSupplierDetails();
+
+    this.packUsers = null;
+    this.supplierForMainSupplier = null;
+    this.supplierForSubSupplier = null;
+    this.supplierForNileSupplier = null;
+
+    this.packagingUsersService.getConsignorsList('S').subscribe(
+      data => {
+        this.packUsers = data;
+      }
+    );
+  }
+
+  deleteConfirmationSupplierRelation(supplierId: number) {
+    this.confirmationService.confirm({
+      message: 'Are you sure you want to delete Supplier relation details?',
+      header: 'Delete Confirmation',
+      acceptButtonStyleClass: 'btn btn-primary',
+      rejectButtonStyleClass: 'float-left btn btn-outline-dark',
+      accept: () => {
+        this.deleteSupplierRelation(supplierId);
+      },
+      reject: () => {
+        // do nothing
+      },
+    });
+  }
+
+  deleteSupplierRelation(supplierId: number) {
+    this.maintainSupplierRelationService.deleteSupplierRelation(supplierId).subscribe(data => {
+      this.toastService.showSuccessToast('Success', 'Supplier Relation Deleted Successfully');
+      this.getSubSupplierDetails();
+    }, (error) => {
+      this.toastService.showFailureToast('Error', error.error.message);
+    });
+  }
+
+  addSubSupplierRelation() {
+    this.subSupplierDetails = new SubSupplierDetails();
+    this.showAddRelationSubSupplier = true;
+  }
+
+  getOrganisationSelectionForMainSupplier(selectedOrg: any) {
+    if (!selectedOrg) {
+      return;
+    }
+    this.supplierForMainSupplier = selectedOrg;
+  }
+
+  getOrganisationSelectionForSubSupplier(selectedOrg: any) {
+    if (!selectedOrg) {
+      return;
+    }
+    this.supplierForSubSupplier = selectedOrg;
+  }
+
+  saveSupplierRelation() {
+    this.subSupplierDetails.mainSupplier = this.supplierForMainSupplier.supplierNo;
+    this.subSupplierDetails.subSupplier = this.supplierForSubSupplier.supplierNo;
+    this.subSupplierDetails.status = true;
+
+    this.maintainSupplierRelationService.addSupplierRelation(this.subSupplierDetails).subscribe(data => {
+      this.toastService.showSuccessToast('Success', 'Supplier Relation Added Successfully');
+      this.subSupplierDetails = null;
+      this.supplierForMainSupplier = null;
+      this.supplierForSubSupplier = null;
+      this.showAddRelationSubSupplier = false;
+      this.getSubSupplierDetails();
+    }, (error) => {
+      this.toastService.showFailureToast('Error', error.error);
+      this.showAddRelationSubSupplier = false;
+    });
+  }
+
+  getSubSupplierDetails() {
+    this.maintainSupplierRelationService.getSubSupplierDetails().subscribe(data => {
+      this.subSupplierDetailsList = data;
+    }, (error) => {
+      this.toastService.showFailureToast('Error', error.error.message);
+    });
+  }
+
+  getAutoDispatchRelations() {
+    this.maintainSupplierRelationService.getAllAutoDispatchRelations().subscribe(data => {
+      this.autoDispatchRelations = data;
+    }, error => {
+      this.toastService.showFailureToast('Error', 'Failed to load Auto Dispatch Relations');
+    });
+  }
+
+  showAddAutoDispatchDialog() {
+    this.autoDispatchRelation = new AutoDispatchRelation();
+    this.supplierForNileSupplier = new Consignor();
+    this.showAddRelationAutoDispatch = true;
+  }
+
+  getOrganisationSelectionForNileSupplier(selectedOrg: any) {
+    if (!selectedOrg) {
+      return;
+    }
+    this.supplierForNileSupplier = selectedOrg;
+    this.autoDispatchRelation.supplierNo = selectedOrg.supplierNo;
+  }
+
+  saveAutoDispatchRelation() {
+    this.maintainSupplierRelationService.addAutoDispatchRelation(this.autoDispatchRelation).subscribe(() => {
+      this.toastService.showSuccessToast('Success', 'Auto Dispatch Relation Added Successfully');
+      this.autoDispatchRelation = null;
+      this.supplierForNileSupplier = null;
+      this.getAutoDispatchRelations();
+      this.showAddRelationAutoDispatch = false;
+    }, error => {
+      this.toastService.showFailureToast('Error', 'Failed to add Auto Dispatch Relation');
+    });
+  }
+
+  deleteConfirmationAutoDispatchRelation(relationId: number) {
+    this.confirmationService.confirm({
+      message: 'Are you sure you want to delete this entry?',
+      header: 'Delete Confirmation',
+      acceptButtonStyleClass: 'btn btn-primary',
+      rejectButtonStyleClass: 'float-left btn btn-outline-dark',
+      accept: () => {
+        this.deleteAutoDispatchRelation(relationId);
+      }
+    });
+  }
+
+  deleteAutoDispatchRelation(relationId: number) {
+    this.maintainSupplierRelationService.deleteAutoDispatchRelation(relationId)
+      .subscribe(() => {
+        this.toastService.showSuccessToast('Success', 'Auto Dispatch Relation Deleted Successfully');
+        this.getAutoDispatchRelations();
+      }, error => {
+        this.toastService.showFailureToast('Error', 'Failed to delete Auto Dispatch Relation');
+      });
+  }
+
+}
+
+
+
+import {HttpClient} from '@angular/common/http';
+import {Injectable} from '@angular/core';
+import {AutoDispatchRelation} from '@app/core/models/auto-dispatch-relation';
+import {SubSupplierDetails} from '@app/core/models/sub-supplier-details';
+import {Observable} from 'rxjs';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class MaintainSupplierRelationsService {
+
+  constructor(private readonly http: HttpClient) {
+  }
+
+  private readonly baseUrl: string = 'nile/maintain-supplier-relations';
+
+  getSubSupplierDetails() {
+    return this.http.get<SubSupplierDetails[]>(this.baseUrl + `/sub-supplier-details`);
+  }
+
+  addSupplierRelation(createSupplierDetail: SubSupplierDetails) {
+    return this.http.post<boolean>(this.baseUrl + `/sub-supplier-details`, createSupplierDetail);
+  }
+
+  deleteSupplierRelation(supplierId: number) {
+    return this.http.delete<boolean>(this.baseUrl + `/sub-supplier-details/${supplierId}`);
+  }
+
+  getAllAutoDispatchRelations(): Observable<AutoDispatchRelation[]> {
+    return this.http.get<AutoDispatchRelation[]>(this.baseUrl + `/auto-dispatch-relations`);
+  }
+
+  addAutoDispatchRelation(autoDispatchRelation: AutoDispatchRelation): Observable<void> {
+    return this.http.post<void>(this.baseUrl + `/auto-dispatch-relations`, autoDispatchRelation);
+  }
+
+  deleteAutoDispatchRelation(id: number): Observable<void> {
+    return this.http.delete<void>(this.baseUrl + `/auto-dispatch-relations/${id}`);
+  }
+}

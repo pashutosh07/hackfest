@@ -1,0 +1,542 @@
+package com.scania.nilepackaging.controllers;
+
+import com.scania.nilepackaging.service.AutoDispatchRelationService;
+import com.scania.nilepackaging.service.SupplierRelationService;
+import com.scania.nilepackaging.vo.AutoDispatchRelationVO;
+import com.scania.nilepackaging.vo.SupplierRelationDetailsVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping(value = "nile/maintain-supplier-relations")
+public class MaintainSupplierRelationsController {
+
+    private static final Logger logger = LoggerFactory.getLogger(MaintainSupplierRelationsController.class);
+
+    @Autowired
+    private AutoDispatchRelationService autoDispatchRelationService;
+
+    @Autowired
+    private SupplierRelationService supplierRelationService;
+
+    @GetMapping("/sub-supplier-details")
+    public ResponseEntity<List<SupplierRelationDetailsVO>> getSubSupplierDetails() {
+        logger.info("Inside Sub suppler relation details");
+        List<SupplierRelationDetailsVO> listSupplierRelationsVO = supplierRelationService.getSubSupplierRelationDetails();
+        return new ResponseEntity<>(listSupplierRelationsVO, HttpStatus.OK);
+    }
+
+    @PostMapping("/sub-supplier-details")
+    public ResponseEntity<Boolean> saveSubSupplierDetails(@RequestBody SupplierRelationDetailsVO supplierRelationDetailsVO, @RequestHeader("username") String username) {
+        logger.info("Inside saveSubSupplierDetails");
+        boolean supplierDet = supplierRelationService.saveSupplierRelationDetails(supplierRelationDetailsVO, username);
+        return new ResponseEntity<>(supplierDet, HttpStatus.OK);
+    }
+
+    @DeleteMapping("sub-supplier-details/{id}")
+    public ResponseEntity<Boolean> deleteSubSupplierDetails(@PathVariable int id, @RequestHeader("username") String username) {
+        logger.info("Inside deleteSubSupplierDetails");
+        supplierRelationService.deleteSupplierRelation(id, username);
+        return new ResponseEntity<>(Boolean.TRUE, HttpStatus.OK);
+    }
+
+    @GetMapping("/auto-dispatch-relations")
+    public ResponseEntity<List<AutoDispatchRelationVO>> getAutoDispatchRelations() {
+        logger.info("Fetching Auto Dispatch Relations");
+        List<AutoDispatchRelationVO> autoDispatchRelations = autoDispatchRelationService.getAllAutoDispatchRelation();
+        return new ResponseEntity<>(autoDispatchRelations, HttpStatus.OK);
+    }
+
+    @PostMapping(value = "/auto-dispatch-relations")
+    public ResponseEntity<Boolean> saveAutoDispatchRelation(@RequestBody AutoDispatchRelationVO autoDispatchRelationVO, @RequestHeader(name = "userName") String userName) {
+        logger.info("Saving Auto Dispatch Relation by user: {}", userName);
+        autoDispatchRelationService.saveAutoDispatchRelation(autoDispatchRelationVO, userName);
+        return new ResponseEntity<>(Boolean.TRUE, HttpStatus.OK);
+    }
+
+    @DeleteMapping("/auto-dispatch-relations/{id}")
+    public ResponseEntity<Boolean> deleteAutoDispatchRelation(@PathVariable int id) {
+        logger.info("Deleting Auto Dispatch Relation with ID: {}", id);
+        autoDispatchRelationService.deleteAutoDispatchRelation(id);
+        return new ResponseEntity<>(Boolean.TRUE, HttpStatus.OK);
+    }
+}
+
+package com.scania.nilepackaging.service;
+
+import com.scania.nilepackaging.vo.AutoDispatchRelationVO;
+
+import java.util.List;
+
+public interface AutoDispatchRelationService {
+
+    List<AutoDispatchRelationVO> getAllAutoDispatchRelation();
+
+    void saveAutoDispatchRelation(AutoDispatchRelationVO autoDispatchRelationVO, String userName);
+
+    void deleteAutoDispatchRelation(int id);
+}
+
+
+package com.scania.nilepackaging.serviceimpl;
+
+import com.scania.nilepackaging.converter.NileConverter;
+import com.scania.nilepackaging.exceptions.DataNotFoundException;
+import com.scania.nilepackaging.model.AutoDispatchRelation;
+import com.scania.nilepackaging.model.PackagingUser;
+import com.scania.nilepackaging.repository.AutoDispatchRelationRepository;
+import com.scania.nilepackaging.service.AutoDispatchRelationService;
+import com.scania.nilepackaging.service.PackagingUserService;
+import com.scania.nilepackaging.vo.AutoDispatchRelationVO;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class AutoDispatchRelationServiceImpl implements AutoDispatchRelationService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AutoDispatchRelationServiceImpl.class);
+
+    @Autowired
+    private AutoDispatchRelationRepository autoDispatchRelationRepository;
+
+    @Autowired
+    private PackagingUserService packagingUserService;
+
+    @Override
+    public List<AutoDispatchRelationVO> getAllAutoDispatchRelation() {
+        return NileConverter.convertAutoDispatchRelations(autoDispatchRelationRepository.findAll());
+    }
+
+    @Override
+    public void saveAutoDispatchRelation(AutoDispatchRelationVO autoDispatchRelationVO, String userName) {
+        if (StringUtils.isEmpty(autoDispatchRelationVO.getWebstarMainSupplier()) ||
+                StringUtils.isEmpty(autoDispatchRelationVO.getWebstarSubSupplier()) ||
+                StringUtils.isEmpty(autoDispatchRelationVO.getSupplierNo())) {
+            throw new DataNotFoundException("All fields are required");
+        }
+
+        logger.info("Saving AutoDispatchRelation");
+
+        PackagingUser packagingUser = packagingUserService.getPackagingUserByGCMSupplierNo(autoDispatchRelationVO.getSupplierNo());
+
+        if (packagingUser != null) {
+            AutoDispatchRelation autoDispatchRelation = new AutoDispatchRelation();
+            autoDispatchRelation.setWebstarMainSupplier(autoDispatchRelationVO.getWebstarMainSupplier());
+            autoDispatchRelation.setWebstarSubSupplier(autoDispatchRelationVO.getWebstarSubSupplier());
+            autoDispatchRelation.setPackagingUser(packagingUser);
+            autoDispatchRelation.setCreatedBy(userName);
+            autoDispatchRelationRepository.save(autoDispatchRelation);
+        }
+    }
+
+    @Override
+    public void deleteAutoDispatchRelation(int id) {
+        autoDispatchRelationRepository.deleteById(id);
+    }
+}
+
+
+package com.scania.nilepackaging.repository;
+
+import com.scania.nilepackaging.model.AutoDispatchRelation;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface AutoDispatchRelationRepository extends JpaRepository<AutoDispatchRelation, Integer> {
+
+}
+
+
+package com.scania.nilepackaging.converter;
+
+import com.scania.nilepackaging.enums.OptimizerOrderStatus;
+import com.scania.nilepackaging.model.*;
+import com.scania.nilepackaging.util.DateUtils;
+import com.scania.nilepackaging.vo.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+public class NileConverter {
+
+    private static final Logger logger = LoggerFactory.getLogger(NileConverter.class);
+
+    private NileConverter() {
+    }
+
+    public static List<PlanOrderVO> convertPlanOrderVO(List<ViewUnplanOrders> viewUnplanOrders) {
+        List<PlanOrderVO> planOrderVOS = new ArrayList<>(viewUnplanOrders.size());
+        viewUnplanOrders.forEach(unplanOrder -> {
+            PlanOrderVO planOrderVO = new PlanOrderVO();
+            planOrderVO.setOrderId(unplanOrder.getOrderId());
+            planOrderVO.setCountryZip(unplanOrder.getCountryZip());
+            planOrderVO.setFirstPickUpDate(unplanOrder.getFirstPickUpDate());
+            planOrderVO.setLastPickUpDate(unplanOrder.getLastPickUpDate());
+            planOrderVO.setReceiver(unplanOrder.getReceiver());
+            planOrderVO.setReceiverName(unplanOrder.getReceiverName());
+            planOrderVO.setOrderLoadMeter(unplanOrder.getOrderLoadMeter());
+            planOrderVO.setCarrier(unplanOrder.getCarrier());
+            planOrderVO.setOrderloadType(unplanOrder.getOrderLoadType());
+            planOrderVO.setDbd(unplanOrder.getDbd());
+            planOrderVO.setHasMerged(unplanOrder.getHasMerged());
+            planOrderVO.setMhNumbers(unplanOrder.getMhNumbers());
+            planOrderVOS.add(planOrderVO);
+        });
+        return planOrderVOS;
+    }
+
+    public static List<OrderOptimizerVO> orderOptimizerVO(List<ViewOrderOptimizer> viewOrderOptimizers) {
+        List<OrderOptimizerVO> orderOptimizerVOS = new ArrayList<>(viewOrderOptimizers.size());
+        viewOrderOptimizers.forEach(orderOptimizer -> {
+            OrderOptimizerVO orderOptimizerVO = new OrderOptimizerVO();
+            orderOptimizerVO.setOrderId(orderOptimizer.getOrderId());
+            orderOptimizerVO.setSender(orderOptimizer.getSender());
+            orderOptimizerVO.setZipCode(orderOptimizer.getZipCode());
+            orderOptimizerVO.setCountryCode(orderOptimizer.getCountryCode());
+            orderOptimizerVO.setDbd(orderOptimizer.getDbd());
+            orderOptimizerVO.setReceiverId(orderOptimizer.getReceiverId());
+            orderOptimizerVO.setReceiverName(orderOptimizer.getReceiverName());
+            orderOptimizerVO.setOrderVolume(orderOptimizer.getOrderVolume());
+            orderOptimizerVO.setRemarks(orderOptimizer.getRemarks());
+            orderOptimizerVO.setOrderType(orderOptimizer.getOrderType());
+            orderOptimizerVO.setReceiverAddressId(orderOptimizer.getReceiverAddressId());
+            orderOptimizerVO.setCarrier(orderOptimizer.getCarrier());
+            orderOptimizerVOS.add(orderOptimizerVO);
+        });
+        return orderOptimizerVOS;
+    }
+
+    public static List<OptimizerOrderHistoryVO> orderHistoryVO(List<Optimizer> orders) {
+        List<OptimizerOrderHistoryVO> historyList = new ArrayList<>(orders.size());
+        orders.forEach(order -> {
+            OptimizerOrderHistoryVO history = new OptimizerOrderHistoryVO();
+            history.setStatus(OptimizerOrderStatus.getStatusDescription(order.getStatus()));
+            history.setReason(order.getReason());
+            history.setCreatedDate(order.getUpdatedDate());
+            history.setOrderId(order.getOrderId() == 0 ? order.getId() : order.getOrderId());
+            historyList.add(history);
+        });
+        return historyList;
+    }
+
+    public static List<NileFilesVO> convert(List<NileFiles> nileFiles) {
+        List<NileFilesVO> nileFilesVOList = new ArrayList<>(nileFiles.size());
+        nileFiles.forEach(files -> {
+            NileFilesVO nileFilesVO = new NileFilesVO();
+            nileFilesVO.setId(files.getId());
+            nileFilesVO.setFileName(files.getFileName());
+            nileFilesVO.setOriginalFileName(files.getOriginalFileName());
+            nileFilesVO.setFileRefId(files.getFileRefId());
+            nileFilesVOList.add(nileFilesVO);
+        });
+        return nileFilesVOList;
+    }
+
+    public static List<AddressVO> convertAddresses(List<Address> addresses) {
+        List<AddressVO> nileFilesVOList = new ArrayList<>(addresses.size());
+        addresses.forEach(address -> nileFilesVOList.add(convertAddress(address)));
+        return nileFilesVOList;
+    }
+
+    public static AddressVO convertAddress(Address address) {
+        AddressVO addressVO = new AddressVO();
+        addressVO.setAddressId(address.getAddressId());
+        addressVO.setAddressLine1(address.getAddressLine1());
+        addressVO.setAddressLine2(address.getAddressLine2());
+        addressVO.setCity(address.getCity());
+        addressVO.setCountry(address.getCountryCode());
+        addressVO.setZipcode(address.getZipcode());
+        addressVO.setHead(address.isHeadAddress());
+        addressVO.setType(address.getAddressType().getType());
+        addressVO.setLatitude(Optional.ofNullable(address.getLatitude()).orElse(0.0));
+        addressVO.setLongitude(Optional.ofNullable(address.getLongitude()).orElse(0.0));
+        return addressVO;
+    }
+
+    public static List<CarrierVO> convertCarriers(List<Carriers> nileCarriers) {
+        List<CarrierVO> carrierVOList = new ArrayList<>(nileCarriers.size());
+        nileCarriers.forEach(carrier -> {
+            CarrierVO carriervo = new CarrierVO();
+            carriervo.setCarrierId(carrier.getCarrierId());
+            carriervo.setCarrierDescr(carrier.getCarrierDescr());
+            carrierVOList.add(carriervo);
+        });
+
+        return carrierVOList;
+    }
+
+    public static Address convert(AddressVO addressvo, Address address) {
+        address.setAddressLine1(addressvo.getAddressLine1());
+        address.setAddressLine2(addressvo.getAddressLine2());
+        address.setCity(addressvo.getCity());
+        address.setZipcode(addressvo.getZipcode());
+        address.setCountryCode(addressvo.getCountry());
+        address.setAddressTypeValue(addressvo.getType());
+        address.setActive(true);
+        address.setCreationDate(DateUtils.getCurrentDateTime());
+        address.setHeadAddress(addressvo.isHead());
+        address.setCreatedBy(addressvo.getCreatedBy());
+        address.setVersion(1L);
+        address.setLatitude(addressvo.getLatitude());
+        address.setLongitude(addressvo.getLongitude());
+        return address;
+    }
+
+    public static List<Consignor> convertConsignors(List<PackagingUser> packagingUsers) {
+        List<Consignor> consignors = new ArrayList<>(packagingUsers.size());
+        packagingUsers.forEach(packagingUser -> {
+            Consignor consignor = new Consignor();
+            consignor.setSupplierNo(packagingUser.getMcSupplierno());
+            consignor.setName(packagingUser.getName());
+            consignor.setPackUserId(packagingUser.getPackUserId().intValue());
+            consignor.setType(packagingUser.getType());
+            consignor.setReimbursementActivated(packagingUser.getReimbursementActivated());
+            consignor.setSimplifiedPackaging(packagingUser.getIsSimplifiedPackagingOrder());
+            consignor.setSimplifiedShunting(packagingUser.getIsSimplifiedShuntingOrder());
+            consignor.setDispatchToPRUAllowed(packagingUser.getDispatchToPRUAllowed());
+            consignor.setRedFlowAllowed(packagingUser.getIsRedFlowAllowed());
+            consignors.add(consignor);
+        });
+        return consignors;
+    }
+
+    public static SlotTimeConfig convert(SlotTimeConfigVO slotTimeConfigVO) {
+        SlotTimeConfig slotTimeConfig = new SlotTimeConfig();
+        slotTimeConfig.setId(slotTimeConfigVO.getId());
+        slotTimeConfig.setSupplierId(slotTimeConfigVO.getSupplierId());
+        slotTimeConfig.setWindowId(slotTimeConfigVO.getWindowId());
+        slotTimeConfig.setCapacity(slotTimeConfigVO.getCapacity());
+        slotTimeConfig.setFromTime(slotTimeConfigVO.getFromTime());
+        slotTimeConfig.setToTime(slotTimeConfigVO.getToTime());
+        slotTimeConfig.setWeekdays(slotTimeConfigVO.getWeekdays());
+        return slotTimeConfig;
+    }
+
+    public static List<SlotTimeConfigVO> convertSlotTimeConfigs(List<SlotTimeConfig> slotTimeConfigs) {
+        List<SlotTimeConfigVO> slotTimeConfigVOS = new ArrayList<>(slotTimeConfigs.size());
+        slotTimeConfigs.forEach(slotTimeConfig -> {
+            SlotTimeConfigVO slotTimeConfigVO = new SlotTimeConfigVO();
+            slotTimeConfigVO.setId(slotTimeConfig.getId());
+            slotTimeConfigVO.setSupplierId(slotTimeConfig.getSupplierId());
+            slotTimeConfigVO.setWindowId(slotTimeConfig.getWindowId());
+            slotTimeConfigVO.setCapacity(slotTimeConfig.getCapacity());
+            slotTimeConfigVO.setFromTime(slotTimeConfig.getFromTime());
+            slotTimeConfigVO.setToTime(slotTimeConfig.getToTime());
+            slotTimeConfigVO.setWeekdays(slotTimeConfig.getWeekdays());
+            slotTimeConfigVOS.add(slotTimeConfigVO);
+        });
+
+        return slotTimeConfigVOS;
+    }
+
+    public static List<TransportTypesVO> convertTransportTypes(List<TransportTypes> transportTypes) {
+        List<TransportTypesVO> transportTypesVOS = new ArrayList<>(transportTypes.size());
+        transportTypes.forEach(transportType -> {
+            TransportTypesVO transportTypesVO = new TransportTypesVO();
+            transportTypesVO.setTransportTypeId(transportType.getTransportTypeId());
+            transportTypesVO.setTruckType(transportType.getTruckType());
+            transportTypesVO.setWeightToLM(transportType.getWeightToLM());
+            transportTypesVO.setVolumeToLM(transportType.getVolumeToLM());
+            transportTypesVO.setTruckType(transportType.getTruckType());
+            transportTypesVO.setMaxKG(transportType.getMaxKG());
+            transportTypesVO.setMaxLM(transportType.getMaxLM());
+            transportTypesVOS.add(transportTypesVO);
+        });
+
+        return transportTypesVOS;
+    }
+
+    public static List<PrintCopyOrdersVO> convertPrintCopyOrders(List<PrintDocumentLoad> printDocDetails) {
+        List<PrintCopyOrdersVO> printCopyOrdersVOS = new ArrayList<>(printDocDetails.size());
+        printDocDetails.forEach(printDoc -> {
+            PrintCopyOrdersVO copyOrder = new PrintCopyOrdersVO();
+            copyOrder.setLoadNoteCopy(printDoc.getLoadNoteCopy());
+            copyOrder.setDeliveryNoteCopy(printDoc.getDeliveryNoteCopy());
+            copyOrder.setConsignNoteCopy(printDoc.getConsignNoteCopy());
+            copyOrder.setPackageLabelCopy(printDoc.getPackageLabelCopy());
+            copyOrder.setLoadNoteOrder(printDoc.getLoadNoteOrder());
+            copyOrder.setDeliveryNoteOrder(printDoc.getDeliveryNoteOrder());
+            copyOrder.setConsignNoteOrder(printDoc.getConsignNoteOrder());
+            copyOrder.setPackageLabelOrder(printDoc.getPackageLabelOrder());
+            copyOrder.setLoadNoteCheck(printDoc.getLoadNoteCheck());
+            copyOrder.setDeliveryNoteCheck(printDoc.getDeliveryNoteCheck());
+            copyOrder.setConsignNoteCheck(printDoc.getConsignNoteCheck());
+            copyOrder.setPackageLabelCheck(printDoc.getPackageLabelCheck());
+            copyOrder.setPackUserId(printDoc.getPackUser().getPackUserId().intValue());
+            copyOrder.setProformaCheck(printDoc.getProformaCheck());
+
+            printCopyOrdersVOS.add(copyOrder);
+        });
+
+        return printCopyOrdersVOS;
+    }
+
+    public static List<UserSettingsVO> convertUserSettings(List<UserSettings> userSettings) {
+        List<UserSettingsVO> userSettingsVOS = new ArrayList<>(userSettings.size());
+        userSettings.forEach(userSetting -> {
+            UserSettingsVO userSettingsVO = new UserSettingsVO();
+            userSettingsVO.setId(userSetting.getId());
+            userSettingsVO.setEmail(userSetting.getEmail());
+            userSettingsVO.setOrganisationId(userSetting.getPackagingUser().getMcSupplierno());
+            userSettingsVO.setOrganisationName(userSetting.getPackagingUser().getName());
+            userSettingsVO.setPackUserId(userSetting.getPackagingUser().getPackUserId().intValue());
+
+            userSettingsVOS.add(userSettingsVO);
+        });
+
+        return userSettingsVOS;
+    }
+
+    public static UserRolesVO convertUserRole(UserRoles userRole) {
+        UserRolesVO userRolesVO = new UserRolesVO();
+        userRolesVO.setId(userRole.getId());
+        userRolesVO.setUserName(userRole.getUserName());
+        userRolesVO.setRole(userRole.getRole().replace("_", " "));
+        userRolesVO.setOrganisationIds(userRole.getOrganisationIds());
+        userRolesVO.setDisplayUserName(userRole.getCompanyEmail());
+        userRolesVO.setLoginTime(userRole.getLoginTime());
+
+        return userRolesVO;
+    }
+
+    public static List<AutoDispatchRelationVO> convertAutoDispatchRelations(List<AutoDispatchRelation> autoDispatchRelations) {
+        List<AutoDispatchRelationVO> autoDispatchRelationVOS = new ArrayList<>(autoDispatchRelations.size());
+        autoDispatchRelations.forEach(autoDispatchRelation -> {
+            PackagingUser packagingUser = autoDispatchRelation.getPackagingUser();
+
+            if (packagingUser != null) {
+                AutoDispatchRelationVO autoDispatchRelationVO = new AutoDispatchRelationVO();
+                autoDispatchRelationVO.setId(autoDispatchRelation.getId());
+                autoDispatchRelationVO.setWebstarMainSupplier(autoDispatchRelation.getWebstarMainSupplier());
+                autoDispatchRelationVO.setWebstarSubSupplier(autoDispatchRelation.getWebstarSubSupplier());
+                autoDispatchRelationVO.setSupplierNo(packagingUser.getMcSupplierno());
+                autoDispatchRelationVO.setCreatedDate(autoDispatchRelation.getCreatedDate());
+                autoDispatchRelationVO.setOrganisationName(packagingUser.getName());
+                autoDispatchRelationVOS.add(autoDispatchRelationVO);
+            } else {
+                logger.error("Invalid Packaging User for {}", autoDispatchRelation.getId());
+            }
+        });
+
+        return autoDispatchRelationVOS;
+    }
+
+    public static List<SupplierRelationDetailsVO> convertSubSupplierRelations(List<SubSupplier> subSuppliers) {
+        List<SupplierRelationDetailsVO> supplierRelationVOList = new ArrayList<>(subSuppliers.size());
+        subSuppliers.forEach(subSupplier -> {
+            PackagingUser packagingSender = subSupplier.getSender();
+            PackagingUser packagingReceiver = subSupplier.getReceiver();
+
+            if (packagingSender != null && packagingReceiver != null) {
+                SupplierRelationDetailsVO supplierRelationDetailsVO = new SupplierRelationDetailsVO();
+                supplierRelationDetailsVO.setSupplierId(subSupplier.getId());
+                supplierRelationDetailsVO.setMainSupplier(packagingSender.getMcSupplierno());
+                supplierRelationDetailsVO.setSubSupplier(packagingReceiver.getMcSupplierno());
+                supplierRelationDetailsVO.setPartAssigned(subSupplier.getPartAssigned());
+                supplierRelationDetailsVO.setPartAvailable(Boolean.TRUE.equals(subSupplier.getPartAssigned()) ? "Yes" : "No");
+                supplierRelationDetailsVO.setComments(subSupplier.getComments());
+                supplierRelationDetailsVO.setModifiedBy(subSupplier.getCreatedBy());
+                supplierRelationDetailsVO.setModifiedDate(subSupplier.getCreationTime());
+                supplierRelationDetailsVO.setMainSupplierName(packagingSender.getName());
+                supplierRelationDetailsVO.setSubSupplierName(packagingReceiver.getName());
+                supplierRelationVOList.add(supplierRelationDetailsVO);
+            } else {
+                logger.error("Invalid Packaging Users for {}", subSupplier.getId());
+            }
+        });
+
+        return supplierRelationVOList;
+    }
+
+    public static List<NileJobStatusVO> convertNileJobStatus(List<NileJobStatus> nileJobStatuses) {
+        List<NileJobStatusVO> nileJobStatusVOS = new ArrayList<>(nileJobStatuses.size());
+        nileJobStatuses.forEach(nileJobStatus -> {
+            NileJobStatusVO nileJobStatusVO = new NileJobStatusVO();
+            nileJobStatusVO.setJobName(nileJobStatus.getJobName().name());
+            nileJobStatusVO.setJobState(nileJobStatus.getJobState().name());
+            nileJobStatusVO.setRemarks(nileJobStatus.getRemarks());
+            nileJobStatusVO.setStartDate(nileJobStatus.getStartDate());
+            nileJobStatusVO.setEndDate(nileJobStatus.getEndDate());
+
+            nileJobStatusVOS.add(nileJobStatusVO);
+        });
+
+        return nileJobStatusVOS;
+    }
+
+}
+
+package com.scania.nilepackaging.model;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.LocalDateTime;
+
+@Getter
+@Setter
+@Entity
+@Table(name = "t_nile_autodeduct_sub_supplier", schema = "part2mh")
+public class AutoDispatchRelation {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "t_nile_autodeduct_sub_supplier")
+    @SequenceGenerator(name = "t_nile_autodeduct_sub_supplier", sequenceName = "t_nile_autodeduct_sub_supplier_seq", allocationSize = 1, initialValue = 10000, schema = "part2mh")
+    @Column(name = "id", updatable = false, nullable = false)
+    private Integer id;
+
+    @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.REFRESH)
+    @JoinColumn(name = "mc_supplierno", referencedColumnName = "mc_supplierno")
+    private PackagingUser packagingUser;
+
+    @Column(name = "webstar_main_supplier", nullable = false)
+    private String webstarMainSupplier;
+
+    @Column(name = "webstar_sub_supplier", nullable = false)
+    private String webstarSubSupplier;
+
+    @Column(name = "created_date", nullable = false, updatable = false)
+    private LocalDateTime createdDate;
+
+    @Column(name = "created_by")
+    private String createdBy;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdDate = LocalDateTime.now();
+    }
+}
+
+package com.scania.nilepackaging.vo;
+
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+@Data
+public class AutoDispatchRelationVO {
+
+    private Integer id;
+    private String webstarMainSupplier;
+    private String webstarSubSupplier;
+    private String supplierNo;
+    private LocalDateTime createdDate;
+    private String organisationName;
+}
+
