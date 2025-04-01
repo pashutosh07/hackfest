@@ -1,0 +1,913 @@
+package com.scania.nilepackaging.nileapi.controller;
+
+import com.scania.nilepackaging.nileapi.enums.NileJobName;
+import com.scania.nilepackaging.nileapi.scheduler.NileDailyScheduler;
+import com.scania.nilepackaging.nileapi.scheduler.NileWeekdayScheduler;
+import com.scania.nilepackaging.nileapi.scheduler.NileWeekendScheduler;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/trigger")
+public class JobTriggerController {
+
+    @Autowired
+    private NileDailyScheduler nileDailyScheduler;
+    @Autowired
+    private NileWeekdayScheduler nileWeekdayScheduler;
+    @Autowired
+    private NileWeekendScheduler nileWeekendScheduler;
+
+    @GetMapping(value = "/job/{jobName}")
+    public ResponseEntity<String> triggerJob(@PathVariable("jobName") NileJobName jobName) {
+        String result = "Success : ";
+
+        switch (jobName) {
+            case BUSINESS_PARTNER:
+                nileDailyScheduler.updateBusinessPartner();
+                result += jobName;
+                break;
+            case MAXIMUM_LEVEL:
+                nileDailyScheduler.maximumLevelScheduler();
+                result += jobName;
+                break;
+            case NORMAL_ORDER_ARRIVAL:
+                nileDailyScheduler.updateNormalOrderArrivalScheduler();
+                result += jobName;
+                break;
+            case OPTIMIZER_ANALYTICS:
+                nileDailyScheduler.getOptimizerAnalytics();
+                result += jobName;
+                break;
+            case PACKAGING_CODES_UPDATE:
+                nileDailyScheduler.updatePackagingCodesScheduler();
+                result += jobName;
+                break;
+            case PACKAGING_INSTRUCTIONS_UPDATE:
+                nileDailyScheduler.updatePackagingInstructionsScheduler();
+                result += jobName;
+                break;
+            case PACKAGING_INSTRUCTIONS_UPDATE_NEW:
+                nileDailyScheduler.updatePackagingInstructionsNewScheduler();
+                result += jobName;
+                break;
+            case PACKAGING_UPDATE:
+                nileDailyScheduler.updatePackagingsScheduler();
+                result += jobName;
+                break;
+            case PMA_UPDATE:
+                nileDailyScheduler.deletePMADataScheduler();
+                result += jobName;
+                break;
+            case PREPRONED_ORDERS:
+                nileDailyScheduler.prepronedOrdersScheduler();
+                result += jobName;
+                break;
+            case PRU_UPDATE:
+                nileDailyScheduler.webStartsPruMasterScheduler();
+                result += jobName;
+                break;
+            case RETURN_ORDER_PICKED_UP_JOB:
+                nileDailyScheduler.updateReturnOrderToPickedUpScheduler();
+                result += jobName;
+                break;
+            case S360_SUPPLIER_DETAILS:
+                nileDailyScheduler.s360SupplierScheduler();
+                result += jobName;
+                break;
+            case TOTAL_BALANCE:
+                nileDailyScheduler.currentBalanceScheduler();
+                result += jobName;
+                break;
+            case AUTO_ADD_PACKAGING_NUMBER:
+                nileWeekdayScheduler.autoAddPackagingNumber();
+                result += jobName;
+                break;
+            case CONSIGNMENT_FOR_DEVIATION:
+                nileWeekdayScheduler.consignmentDeviationUpdate();
+                result += jobName;
+                break;
+            case SBMB_CONFIG:
+                nileWeekdayScheduler.webStarsSBMBConfigScheduler();
+                result += jobName;
+                break;
+            case SSIP_UPDATE:
+                nileWeekdayScheduler.updateSupplierInfoScheduler();
+                result += jobName;
+                break;
+            case WEBSTARS_SUPPLIER_INFO:
+                nileWeekdayScheduler.webStartsSupplierInfoScheduler();
+                result += jobName;
+                break;
+            case FORECAST_STOCK:
+                nileWeekendScheduler.forecastingStockLevelScheduler();
+                result += jobName;
+                break;
+            case ARCHIVAL_DISPATCH_ORDERS:
+                nileWeekendScheduler.dispatchOrderArchivalScheduler();
+                result += jobName;
+                break;
+            case ARCHIVAL_ORDERS:
+                nileWeekendScheduler.orderArchivalScheduler();
+                result += jobName;
+                break;
+            case ARCHIVAL_PACKAGING_BALANCE_LOG:
+                nileWeekendScheduler.packagingBalanceLogsArchivalScheduler();
+                result += jobName;
+                break;
+            case ARCHIVAL_TMS:
+                nileWeekendScheduler.tmsArchivalScheduler();
+                result += jobName;
+                break;
+
+            default:
+                result = "FAILED : Job name not found";
+                break;
+        }
+
+        return new ResponseEntity<>(result, HttpStatus.OK);
+    }
+}
+
+package com.scania.nilepackaging.nileapi.scheduler;
+
+import com.scania.nilepackaging.nileapi.util.DateUtil;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+import static com.scania.nilepackaging.nileapi.enums.NileJobName.*;
+
+@Component
+public class NileDailyScheduler extends NileScheduler {
+
+    private static final String NILE_DAILY_SCHEDULER = NileDailyScheduler.class.getSimpleName();
+
+    @Scheduled(cron = "00 15 00 * * *") // 00:15 AM
+    public void deletePMADataScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, PMA_UPDATE);
+            masterPackITService.deletePMAData();
+            endJob(NILE_DAILY_SCHEDULER, PMA_UPDATE);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), PMA_UPDATE);
+        }
+    }
+
+    /**
+     * update status 5 order to status 6 with balance at midnight 00.30 am once in
+     * day
+     */
+    @Scheduled(cron = "00 30 00 * * *") // 00:30 AM
+    public void updateNormalOrderArrivalScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, NORMAL_ORDER_ARRIVAL);
+            orderService.updateNormalOrderArrival();
+            endJob(NILE_DAILY_SCHEDULER, NORMAL_ORDER_ARRIVAL);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), NORMAL_ORDER_ARRIVAL);
+        }
+    }
+
+    @Scheduled(cron = "00 00 01 * * MON-FRI") // 1 AM
+    public void currentBalanceScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, TOTAL_BALANCE);
+            maximumLevelService.storeCurrentBalance();
+            endJob(NILE_DAILY_SCHEDULER, TOTAL_BALANCE);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), TOTAL_BALANCE);
+        }
+    }
+
+    @Scheduled(cron = "00 30 01 * * MON-FRI") // 1:30 AM
+    public void prepronedOrdersScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, PREPRONED_ORDERS);
+            maximumLevelService.prepronedOrders();
+            endJob(NILE_DAILY_SCHEDULER, PREPRONED_ORDERS);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), PREPRONED_ORDERS);
+        }
+    }
+
+    @Scheduled(cron = "00 00 02 * * *") // 2:00 AM
+    public void maximumLevelScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, MAXIMUM_LEVEL);
+            maximumLevelService.storeMaximumLevel();
+            endJob(NILE_DAILY_SCHEDULER, MAXIMUM_LEVEL);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), MAXIMUM_LEVEL);
+        }
+    }
+
+    @Scheduled(cron = "00 00 03 * * ?") // 3:00 AM
+    public void updatePackagingsScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, PACKAGING_UPDATE_PM);
+            packITService.updatePackagingMaterials();
+            endJob(NILE_DAILY_SCHEDULER, PACKAGING_UPDATE_PM);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), MAXIMUM_LEVEL);
+        }
+
+        try {
+            startJob(NILE_DAILY_SCHEDULER, PACKAGING_UPDATE_DU);
+            packITService.updateDistributionUnits();
+            endJob(NILE_DAILY_SCHEDULER, PACKAGING_UPDATE_DU);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), MAXIMUM_LEVEL);
+        }
+    }
+
+    @Scheduled(cron = "0 30 05 * * ?")
+    public void getOptimizerAnalytics() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, OPTIMIZER_ANALYTICS);
+            optimizerService.getOptimizerAnalyticsInfo();
+            endJob(NILE_DAILY_SCHEDULER, OPTIMIZER_ANALYTICS);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), OPTIMIZER_ANALYTICS);
+        }
+    }
+
+    /**
+     * @author akubd9
+     * Scheduled method to read PI updates info from Packit every day @ 04:30 am
+     */
+    @Scheduled(cron = "00 30 04 * * MON-FRI") // 4:30 AM
+    public void updatePackagingCodesScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, PACKAGING_CODES_UPDATE);
+            packITService.updatePackagingCodes();
+            endJob(NILE_DAILY_SCHEDULER, PACKAGING_CODES_UPDATE);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), PACKAGING_CODES_UPDATE);
+        }
+    }
+
+    //@Scheduled(cron = "00 00 05 * * ?") // 5:00 AM
+    public void updatePackagingInstructionsScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, PACKAGING_INSTRUCTIONS_UPDATE);
+            packITService.updatePackagingInstructions();
+            endJob(NILE_DAILY_SCHEDULER, PACKAGING_INSTRUCTIONS_UPDATE);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), PACKAGING_INSTRUCTIONS_UPDATE);
+        }
+    }
+
+     @Scheduled(cron = "00 00 05 * * ?") // 5:00 AM
+    public void updatePackagingInstructionsNewScheduler() {
+        String fromDate = DateUtil.yesterdayInYYYYMMDD();
+        String toDate = DateUtil.todayInYYYYMMDD();
+
+        try {
+            startJob(NILE_DAILY_SCHEDULER, PACKAGING_INSTRUCTIONS_UPDATE_NEW);
+            packITService.updatePackagingInstructionsNew(fromDate, toDate);
+            endJob(NILE_DAILY_SCHEDULER, PACKAGING_INSTRUCTIONS_UPDATE_NEW);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), PACKAGING_INSTRUCTIONS_UPDATE_NEW);
+        }
+    }
+
+        @Scheduled(cron = "0 30 06 * * *") // 6:30 AM
+    public void updateBusinessPartner() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, BUSINESS_PARTNER);
+            packagingUserService.updateBusinessPartner();
+            endJob(NILE_DAILY_SCHEDULER, BUSINESS_PARTNER);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), BUSINESS_PARTNER);
+        }
+    }
+
+    @Scheduled(cron = "00 00 07 * * ?") // 7:00 AM
+    public void s360SupplierScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, S360_SUPPLIER_DETAILS);
+            packagingUserService.updateS360SupplierData();
+            endJob(NILE_DAILY_SCHEDULER, S360_SUPPLIER_DETAILS);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), S360_SUPPLIER_DETAILS);
+        }
+    }
+
+    @Scheduled(cron = "00 00 17 * * *") // 5:00 PM
+    public void updateReturnOrderToPickedUpScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, RETURN_ORDER_PICKED_UP_JOB);
+            orderService.updateReturnOrderToPickedUp();
+            endJob(NILE_DAILY_SCHEDULER, RETURN_ORDER_PICKED_UP_JOB);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), RETURN_ORDER_PICKED_UP_JOB);
+        }
+    }
+
+    /**
+     * @author asxtqq
+     * Scheduled to call the webstarPru service , read and insert  the data in the table @ 1:00 am
+     */
+    @Scheduled(cron = "00 30 22 * * ?") // 10:30 PM
+    public void webStartsPruMasterScheduler() {
+        try {
+            startJob(NILE_DAILY_SCHEDULER, PRU_UPDATE);
+            tWebstarsService.getTWebstarsPrufromWebstars();
+            endJob(NILE_DAILY_SCHEDULER, PRU_UPDATE);
+        } catch (Exception e) {
+            failedJob(NILE_DAILY_SCHEDULER, e.getMessage(), PRU_UPDATE);
+        }
+    }
+}
+
+package com.scania.nilepackaging.nileapi.service;
+
+public interface PackITService {
+
+    void updateDistributionUnits();
+    void updatePackagingCodes();
+    void updatePackagingCodes(String fromDate, String toDate);
+    void updatePackagingInstructions();
+    void updatePackagingInstructions(String fromDate, String toDate);
+    void updatePackagingMaterials();
+    void updatePackagingInstructionsNew(String fromDate, String toDate);
+}
+
+
+package com.scania.nilepackaging.nileapi.serviceimpl;
+
+import com.scania.nilepackaging.nileapi.converter.PackagingConverter;
+import com.scania.nilepackaging.nileapi.enums.NileJobState;
+import com.scania.nilepackaging.nileapi.exceptions.BusinessException;
+import com.scania.nilepackaging.nileapi.model.Packaging;
+import com.scania.nilepackaging.nileapi.service.*;
+import com.scania.nilepackaging.nileapi.util.DateUtil;
+import com.scania.nilepackaging.nileapi.util.TokenGenerationUtil;
+import com.scania.nilepackaging.nileapi.vo.AccessTokenResponseVO;
+import com.scania.nilepackaging.nileapi.vo.MasterPackItVO;
+import com.scania.nilepackaging.nileapi.vo.PackInstructionVO;
+import com.scania.nilepackaging.nileapi.vo.packit.*;
+import org.apache.commons.collections4.CollectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Predicate;
+
+import static com.scania.nilepackaging.nileapi.enums.NileJobName.*;
+
+@Service
+public class PackITServiceImpl implements PackITService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PackITServiceImpl.class);
+
+    private static final String MH = "MH-";
+    private final Predicate<String> mhNumberCheckPredicate = mhNumber -> mhNumber.startsWith(MH) && mhNumber.length() == 7; // MH-XXXX
+
+    @Autowired
+    private APIMTokenService apimTokenService;
+    @Autowired
+    private APIMService apimService;
+    @Autowired
+    private NileJobStatusService nileJobStatusService;
+    @Autowired
+    private PackagingService packagingService;
+    @Autowired
+    private DistUnitPackagingService distUnitPackagingService;
+    @Autowired
+    private PackagingCodeService packagingCodeService;
+    @Autowired
+    private MasterPackITService masterPackITService;
+
+    @Override
+    public void updateDistributionUnits() {
+        AbstractMap.SimpleEntry<String, String> fromToDatePair = nileJobStatusService.getFromToDateForJob(PACKAGING_UPDATE_DU, NileJobState.COMPLETED);
+        String toDate = fromToDatePair.getValue();
+        String fromDate = fromToDatePair.getKey();
+
+        String bearerToken = getBearerToken();
+
+        if (StringUtils.hasText(bearerToken)) {
+            List<Packaging> updatedPackagings = new ArrayList<>();
+            ResponseEntity<List<PackagingDUResponseVO>> response = apimService.getDistributionUnits(bearerToken, fromDate, toDate);
+
+            if (response.getStatusCode() == HttpStatus.OK) {
+                List<PackagingDUResponseVO> packagingDUResponseVOList = response.getBody();
+
+                if (CollectionUtils.isNotEmpty(packagingDUResponseVOList)) {
+                    List<String> packagingNumbers = packagingDUResponseVOList.stream().map(PackagingDUResponseVO::getDistributionUnit).map(DistributionUnitVO::getPackageMaterialNumber).map(PackageMaterialNumberVO::getMhNumber).toList();
+                    packagingNumbers = packagingNumbers.stream().filter(mhNumberCheckPredicate).map(value -> value.substring(value.indexOf("-") + 1)).toList();
+                    List<Packaging> packagings = packagingService.getPackagingsByPackagingNumbers(packagingNumbers);
+
+                    packagingDUResponseVOList.forEach(packagingResponseVO -> {
+                        String mhNumber = packagingResponseVO.getDistributionUnit().getPackageMaterialNumber().getMhNumber();
+                        if (mhNumberCheckPredicate.test(mhNumber)) {
+                            Packaging packaging = packagings.stream().filter(packgng -> (MH + packgng.getMhNumber()).equals(mhNumber)).findFirst().orElse(null);
+                            packaging = PackagingConverter.convert(packagingResponseVO, packaging);
+                            distUnitPackagingService.deleteDistUnitPackagingByPackaging(packaging);
+
+                            packaging.setDistUnitPackagings(PackagingConverter.convertDU(packagingResponseVO, packaging));
+
+                            updatedPackagings.add(packaging);
+                        }
+                    });
+
+                    packagingService.saveAll(updatedPackagings);
+                }
+            }
+        }
+
+        logger.info("DistributionUnits Job completed for dates {} - {}", fromDate, toDate);
+    }
+
+    @Override
+    public void updatePackagingCodes() {
+        AbstractMap.SimpleEntry<String, String> fromToDatePair = nileJobStatusService.getFromToDateForJob(PACKAGING_CODES_UPDATE, NileJobState.COMPLETED);
+        String toDate = fromToDatePair.getValue();
+        String fromDate = fromToDatePair.getKey();
+
+        updatePackagingCodes(fromDate, toDate);
+    }
+
+    @Override
+    public void updatePackagingInstructionsNew(String fromDate, String toDate) {
+        logger.info("Entered into updatePackagingInstructionsNew");
+
+        try {
+            String bearerToken = getBearerToken();
+
+            if (StringUtils.hasText(bearerToken)) {
+                logger.info("Entered into updatePackagingInstructionsNew at: {}", DateUtil.getCurrentTime());
+                ResponseEntity<List<PackInstructionVO>> response = apimService.getPackagingInstructionsNew(bearerToken, fromDate);
+
+                if (response.getStatusCode() == HttpStatus.OK) {
+                    response.getBody().forEach(packInstructionVO -> masterPackITService.processPackInstruction(response.getBody()));
+                    masterPackITService.generateExtraPackagingforPI();
+                }
+            }
+            
+            masterPackITService.mergePMAtoPackCodes();
+        } catch (Exception e) {
+            throw new BusinessException("Exception occurred inside updatePackagingInstructionsNew: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void updatePackagingCodes(String fromDate, String toDate) {
+        try {
+            String bearerToken = getBearerToken();
+
+            if (StringUtils.hasText(bearerToken)) {
+                ResponseEntity<List<PackCodeVO>> response = apimService.getPackagingCodes(bearerToken, fromDate, toDate);
+
+                if (response.getStatusCode() == HttpStatus.OK) {
+                    packagingCodeService.updatePackagingCodes(response.getBody());
+                }
+            }
+        } catch (Exception e) {
+            throw new BusinessException("Exception occurred inside updatePackagingCodes: " + e.getMessage());
+        }
+
+        logger.info("Packaging Codes Job completed for dates {} - {}", fromDate, toDate);
+    }
+
+    @Override
+    public void updatePackagingInstructions() {
+        AbstractMap.SimpleEntry<String, String> fromToDatePair = nileJobStatusService.getFromToDateForJob(PACKAGING_INSTRUCTIONS_UPDATE, NileJobState.COMPLETED);
+        String toDate = fromToDatePair.getValue();
+        String fromDate = fromToDatePair.getKey();
+
+        updatePackagingInstructions(fromDate, toDate);
+    }
+
+    @Override
+    public void updatePackagingInstructions(String fromDate, String toDate) {
+        try {
+            String bearerToken = getBearerToken();
+
+            if (StringUtils.hasText(bearerToken)) {
+                ResponseEntity<List<MasterPackItVO>> response = apimService.getPackagingInstructions(bearerToken, fromDate, toDate);
+
+                if (response.getStatusCode() == HttpStatus.OK) {
+                    masterPackITService.updatePackagingInstructions(response.getBody());
+
+                    mergePMAtoPackCodes();
+                }
+            }
+        } catch (Exception e) {
+            throw new BusinessException("Exception occurred inside updatePackagingCodes: " + e.getMessage());
+        }
+
+        logger.info("Packaging Instructions Job completed for dates {} - {}", fromDate, toDate);
+    }
+
+    @Override
+    public void updatePackagingMaterials() {
+        AbstractMap.SimpleEntry<String, String> fromToDatePair = nileJobStatusService.getFromToDateForJob(PACKAGING_UPDATE_PM, NileJobState.COMPLETED);
+        String toDate = fromToDatePair.getValue();
+        String fromDate = fromToDatePair.getKey();
+
+        String bearerToken = getBearerToken();
+
+        if (StringUtils.hasText(bearerToken)) {
+            ResponseEntity<List<PackagingPMResponseVO>> response = apimService.getPackagingMaterials(bearerToken, fromDate, toDate);
+            List<Packaging> updatedPackagings = new ArrayList<>();
+
+            if (response.getStatusCode() == HttpStatus.OK) {
+                List<PackagingPMResponseVO> packagingPMResponseVOList = response.getBody();
+
+                if (CollectionUtils.isNotEmpty(packagingPMResponseVOList)) {
+                    List<String> packagingNumbers = packagingPMResponseVOList.stream().map(PackagingPMResponseVO::getPackageMaterialNumber).map(PackageMaterialNumberVO::getMhNumber).toList();
+                    packagingNumbers = packagingNumbers.stream().filter(mhNumberCheckPredicate).map(value -> value.substring(value.indexOf("-") + 1)).toList();
+                    List<Packaging> packagings = packagingService.getPackagingsByPackagingNumbers(packagingNumbers);
+                    packagingPMResponseVOList.forEach(packagingResponseVO -> {
+                        String mhNumber = packagingResponseVO.getPackageMaterialNumber().getMhNumber();
+                        if (mhNumberCheckPredicate.test(mhNumber)) {
+                            Packaging packaging = packagings.stream().filter(packgng -> (MH + packgng.getMhNumber()).equals(mhNumber)).findFirst().orElse(null);
+                            packaging = PackagingConverter.convert(packagingResponseVO, packaging);
+                            logger.info("Processing packaging PM : {}", packaging);
+                            updatedPackagings.add(packaging);
+                        }
+                    });
+
+                    packagingService.saveAll(updatedPackagings);
+                }
+            }
+        }
+
+        logger.info("Packaging Material Job completed for dates {} - {}", fromDate, toDate);
+    }
+
+    private void mergePMAtoPackCodes() {
+        String dailySLAPMAUpdatesToPackCodes = "dailySLAPMAUpdatesToPackCodes";
+
+        try {
+            logger.info("Started {}", dailySLAPMAUpdatesToPackCodes);
+            masterPackITService.mergePMAtoPackCodes();
+            logger.info("Completed {}", dailySLAPMAUpdatesToPackCodes);
+        } catch (Exception e) {
+            logger.error("Error in mergePMAtoPackCodes", e);
+            throw new BusinessException("Exception occurred inside merging PMA to PackCodes: " + e.getMessage());
+        }
+    }
+
+    private String getBearerToken() {
+        ResponseEntity<AccessTokenResponseVO> accessTokenResponseResponseEntity = apimTokenService.getAPIMToken("grant_type=client_credentials");
+        return TokenGenerationUtil.getBearerToken(accessTokenResponseResponseEntity.getBody());
+    }
+}
+
+
+package com.scania.nilepackaging.nileapi.service;
+
+import com.scania.nilepackaging.nileapi.vo.MasterPackItVO;
+import com.scania.nilepackaging.nileapi.vo.PackInstructionVO;
+
+import java.util.List;
+
+public interface MasterPackITService {
+
+    void updatePackagingInstructions(List<MasterPackItVO> packagingInstructions);
+
+    void mergePMAtoPackCodes();
+
+    void deletePMAData();
+
+    void processPackInstruction(PackInstructionVO packInstruction);
+    
+    void processPackInstruction(List<PackInstructionVO> packInstructionList);
+    void generateExtraPackagingforPI();
+
+}
+
+
+package com.scania.nilepackaging.nileapi.serviceimpl;
+
+import com.google.common.collect.Lists;
+import com.scania.nilepackaging.nileapi.exceptions.BusinessException;
+import com.scania.nilepackaging.nileapi.model.part2mh.MasterPackIT;
+import com.scania.nilepackaging.nileapi.repository.MasterPackITRepository;
+import com.scania.nilepackaging.nileapi.repository.PackITMasterUpdRepository;
+import com.scania.nilepackaging.nileapi.service.MasterPackITService;
+import com.scania.nilepackaging.nileapi.util.DateUtil;
+import com.scania.nilepackaging.nileapi.vo.MasterPackItVO;
+import com.scania.nilepackaging.nileapi.vo.PackInstructionVO;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+
+@Service
+public class MasterPackITServiceImpl implements MasterPackITService {
+
+    private static final String PACKIT = "PACKIT";
+    private static final String DATE_FORMAT = "yyyy-MM-dd HH:mm:ss";
+    private static final Logger logger = LoggerFactory.getLogger(MasterPackITServiceImpl.class);
+    private static final int BATCH_SIZE = 800;
+
+    @Autowired
+    private PackITMasterUpdRepository masterUpdRepository;
+    @Autowired
+    private MasterPackITRepository masterPackITRepository;
+
+    @Override
+    public void updatePackagingInstructions(List<MasterPackItVO> masterPackItVOList) {
+        logger.info("Entered into updatePackagingInstructions");
+        // Set the headers you need send
+        try {
+            deleteRowsFromMasterTable(masterPackItVOList); // Prod issue solve.
+            masterUpdRepository.deleteAllInBatch();
+
+            if (CollectionUtils.isNotEmpty(masterPackItVOList)) {
+                logger.info("Daily Packets size: {}", masterPackItVOList.size());
+
+                masterPackItVOList.forEach(masterPackItVO -> {
+                    logger.info("Total Packet Received : {}, mJson: {} and getPackagingCodeLvl1: {}", masterPackItVOList.size(), masterPackItVO.getPackagingMaterial(), masterPackItVO.getPackagingCodeLvl1());
+
+                    MasterPackIT masterPack = new MasterPackIT();
+                    masterPack.setPartNumber(masterPackItVO.getPartNumber());
+                    masterPack.setPackagingInstructionId(BigDecimal.valueOf(masterPackItVO.getPackagingInstructionId() != null ? Long.parseLong(masterPackItVO.getPackagingInstructionId()) : 0));
+                    masterPack.setPru(masterPackItVO.getPru());
+                    masterPack.setMainSupplier(masterPackItVO.getMainSupplier());
+                    masterPack.setPackagingMaterial(masterPackItVO.getPackagingMaterial());
+                    masterPack.setPackagingCodeLevel1(masterPackItVO.getPackagingCodeLvl1());
+                    masterPack.setPackagingCodeLevel2(masterPackItVO.getPackagingCodeLvl2());
+                    masterPack.setPartQtyLevel1(masterPackItVO.getPartQtyLvl1() != null ? Long.parseLong(masterPackItVO.getPartQtyLvl1()) : 0);
+                    masterPack.setPartQtyLevel2(masterPackItVO.getPartQtyLvl2() != null ? Double.parseDouble(masterPackItVO.getPartQtyLvl2()) : 0);
+                    masterPack.setMhPerPcs(masterPackItVO.getMhPerPcs());
+                    masterPack.setChangedDate(DateUtil.getSqlTimeStamp(masterPackItVO.getChangedDate()));
+                    masterPack.setStatus(masterPackItVO.getStatus());
+                    masterPack.setSource(PACKIT);
+                    masterPackITRepository.save(masterPack);
+
+                    /* new coded start here */
+                    String packagingMaterial = masterPackItVO.getPackagingMaterial();
+                    String packagingCodeLvl1 = masterPackItVO.getPackagingCodeLvl1();
+                    long packagingInstructionID = Long.parseLong(masterPackItVO.getPackagingInstructionId());
+                    String pru = masterPackItVO.getPru();
+                    logger.info("Mh_no: {}, PCK_Code: {} and PACKAGING_INST_ID: {}", packagingMaterial, packagingCodeLvl1, packagingInstructionID);
+
+                    // ADDING NEW ROW
+                    String opsOutput = null;
+                    try {
+                        opsOutput = masterPackITRepository.callPackItDailyUpdates(packagingMaterial, packagingCodeLvl1, pru, packagingInstructionID);
+                        Thread.sleep(2000);
+                    } catch (Exception e) {
+                        logger.error("Procedure DAILY_PACKET_UPDATES execution failed {}", e.getMessage());
+                    }
+                    logger.info("Procedure DAILY_PACKET_UPDATES execution: {}, MH_No: {} and PCKCode: {}", opsOutput, packagingMaterial, packagingCodeLvl1);
+                });
+            }
+
+            // move PI updates from Temp table to Main table
+            logger.info("Scheduler Ended after inserting in Temp table & Master table");
+        } catch (Exception e) {
+            throw new BusinessException("Exception occurred inside getPIupdatesFromPackIT: " + e.getMessage());
+        }
+    }
+
+
+    private void deleteRowsFromMasterTable(List<MasterPackItVO> masterPackItVOList) {
+
+        List<Integer> piList = masterPackItVOList.stream().map(vo -> {
+            try {
+                return Integer.valueOf(vo.getPackagingInstructionId());
+            } catch (NumberFormatException e) {
+
+                return 0;
+            }
+        }).distinct().collect(Collectors.toList());
+        List<List<Integer>> batchToDelete = Lists.partition(piList, BATCH_SIZE);
+
+        batchToDelete.forEach(batch -> deleteRows(batch));
+    }
+
+    public void deleteRows(List<Integer> packInsIdStr) {
+        Integer rowDelFromMaster = masterPackITRepository.deletePackInstIdList(packInsIdStr);
+        logger.info("ROWS DELETED FROM MASTER TABLE having Scrapped Status- {} and List of PackInstruction IDs: {}", rowDelFromMaster, packInsIdStr);
+    }
+
+    @Override
+    public void mergePMAtoPackCodes() {
+        logger.info("Started Merging SLA PMA to Pack Codes");
+        masterPackITRepository.callDailySLAPMAUpdates();
+        logger.info("Ended Merging SLA PMA to Pack Codes");
+    }
+
+    @Override
+    public void deletePMAData() {
+        logger.info("Started deleting SLA PMA");
+        masterPackITRepository.deletePMAData();
+        logger.info("Ended deleting SLA PMA");
+    }
+
+
+    @Override
+    public void processPackInstruction(List<PackInstructionVO> packInstructionList) {
+        if (CollectionUtils.isNotEmpty(packInstructionList)) {
+            List<Integer> piList = packInstructionList.stream().map(PackInstructionVO::getInstructionId).distinct().collect(Collectors.toList());
+            List<List<Integer>> batchToDelete = Lists.partition(piList, BATCH_SIZE);
+
+            batchToDelete.forEach(this::deleteRows);
+
+            logger.info("Deleted records :  {} and Inserting new row  ", piList.size());
+
+            packInstructionList.parallelStream().forEach(this::processPackInstruction);
+            
+        }
+    }
+
+    @Override
+    public void processPackInstruction(PackInstructionVO packInstruction) {
+        List<MasterPackIT> listPi = new ArrayList<>();
+        AtomicInteger quantityinlevel1 = new AtomicInteger();
+        AtomicInteger quantityinlevel2 = new AtomicInteger();
+        AtomicReference<String> packagingcodelevel1 = new AtomicReference<>();
+        AtomicReference<String> packagingcodelevel2 = new AtomicReference<>();
+        int instructionID = packInstruction.getInstructionId();
+        String partNumber = packInstruction.getPartNumber();
+        String statusDescription = packInstruction.getStatusDescription();
+
+        Optional.ofNullable(packInstruction.getSupplierInfo()).ifPresent(supplierInfoList ->
+                supplierInfoList.forEach(supplierInfo ->
+                        supplierInfo.getPru().forEach(pruInfo -> {
+                                    Optional.ofNullable(packInstruction.getPackagingCode()).ifPresent(packagingCodes ->
+                                            packagingCodes.forEach(packagingCode ->
+                                                    packagingCode.getPackagingLevel().forEach(level -> {
+                                                                if (level.getLevel() == 1) {
+                                                                    quantityinlevel1.set(level.getQtyInLevel());
+                                                                    packagingcodelevel1.set(packagingCode.getPackagingCode());
+                                                                } else if (level.getLevel() == 2) {
+                                                                    quantityinlevel2.set(level.getQtyInLevel());
+                                                                    packagingcodelevel2.set(packagingCode.getPackagingCode());
+                                                                }
+                                                                level.getPackagingMaterial().forEach(material ->
+                                                                        listPi.add(createTNileMasterPackIt(
+                                                                                instructionID, partNumber, statusDescription,
+                                                                                supplierInfo.getSupplierNo7(), pruInfo.getPru(),
+                                                                                level.getLevel(), material.getMhNo(), level.getQtyInLevel(), material.getQuantity()
+                                                                        ))
+                                                                );
+                                                            }
+                                                    )
+                                            )
+                                    );
+							Optional.ofNullable(packInstruction.getAdditionalMaterial())
+									.ifPresent(additionalMaterials -> additionalMaterials.forEach(additinalmaterial -> {
+										if (!StringUtils.isBlank(additinalmaterial.getAdditionalMaterial())) {
+											listPi.add(createTNileMasterPackIt(instructionID, partNumber,
+													statusDescription, supplierInfo.getSupplierNo7(), pruInfo.getPru(),
+													0, additinalmaterial.getAdditionalMaterial(),
+													quantityinlevel1.get(), additinalmaterial.getQuantity()));
+										}
+									})
+                                    );
+                                }
+                        )
+
+                )
+        );
+        List<MasterPackIT> finalPi = listPi.stream().map(pi -> {
+            pi.setPackagingCodeLevel1(packagingcodelevel1.get());
+            pi.setPackagingCodeLevel2(packagingcodelevel2.get());
+            pi.setPartQtyLevel1(quantityinlevel1.longValue());
+            pi.setPartQtyLevel2(quantityinlevel2.doubleValue());
+            pi.setChangedDate(DateUtil.getDate(packInstruction.getChangedDate(), DATE_FORMAT));
+            return pi;
+        }).collect(Collectors.toList());
+
+        masterPackITRepository.saveAll(finalPi);
+    }
+
+    /**
+     * Creates a TNileMasterPackIt instance.
+     */
+    private MasterPackIT createTNileMasterPackIt(int instructionID, String partNumber, String statusDescription,
+                                                 String supplierNo, String pru, int codeLevel1, String mhNo,
+                                                 int qtyInLevel, int quantity) {
+        BigDecimal mhPerPcs = qtyInLevel != 0 ? BigDecimal.valueOf((double) quantity / qtyInLevel) : BigDecimal.ZERO;
+
+        return gettNileMasterPackIt(instructionID, partNumber, statusDescription,
+                supplierNo, pru, codeLevel1, mhNo, mhPerPcs);
+    }
+
+
+    private MasterPackIT gettNileMasterPackIt(int instructionID, String partNumber, String statusDescription, String supplierNo, String pru, int codeLevel1, String mhNo, BigDecimal mhPerPcs) {
+        MasterPackIT tNileMasterPackIt = new MasterPackIT();
+        tNileMasterPackIt.setPackagingInstructionId(BigDecimal.valueOf(instructionID));
+        tNileMasterPackIt.setPartNumber(partNumber);
+        tNileMasterPackIt.setStatus(statusDescription);
+        tNileMasterPackIt.setMainSupplier(supplierNo);
+        tNileMasterPackIt.setPru(pru);
+        tNileMasterPackIt.setPackagingMaterial(mhNo);
+        tNileMasterPackIt.setPackagingCodeLevel1(String.valueOf(codeLevel1));
+        tNileMasterPackIt.setMhPerPcs(mhPerPcs);
+        tNileMasterPackIt.setSource(PACKIT);
+        return tNileMasterPackIt;
+    }
+
+
+	@Override
+	public void generateExtraPackagingforPI() {
+        masterPackITRepository.generateExtraPackagings();
+        logger.info("Ended generating Extra packagings for PACKIT PI");
+	}
+
+
+}
+
+
+package com.scania.nilepackaging.nileapi.service;
+
+import com.scania.nilepackaging.nileapi.model.part2mh.webstars.WebstarsPackagSbMbConfig;
+import com.scania.nilepackaging.nileapi.model.part2mh.webstars.WebstarsPru;
+import com.scania.nilepackaging.nileapi.model.part2mh.webstars.WebstarsSupplier;
+import com.scania.nilepackaging.nileapi.vo.ConsignmentResponseVO;
+import com.scania.nilepackaging.nileapi.vo.MasterPackItVO;
+import com.scania.nilepackaging.nileapi.vo.PackInstructionVO;
+import com.scania.nilepackaging.nileapi.vo.SSIPResponseVO;
+import com.scania.nilepackaging.nileapi.vo.SupplierContactsDetailsVO;
+import com.scania.nilepackaging.nileapi.vo.entraapi.BusinessPartnerResponseVO;
+import com.scania.nilepackaging.nileapi.vo.optimizer.OptimizerAnalyticsVO;
+import com.scania.nilepackaging.nileapi.vo.packit.PackCodeVO;
+import com.scania.nilepackaging.nileapi.vo.packit.PackagingDUResponseVO;
+import com.scania.nilepackaging.nileapi.vo.packit.PackagingPMResponseVO;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@FeignClient(contextId = "apim", name = "apim", url = "${apim.base.url}")
+public interface APIMService {
+
+    // Business Partner End-points
+    @GetMapping(value = "/apimasterdata/v1/get_API_BUSINESS_PARTNER", produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<BusinessPartnerResponseVO> getBusinessPartnerFromSAP(@RequestHeader("Authorization") String bearerToken);
+
+    // Optimizer End-points
+    @PostMapping(value = "/aa_aws_dbs_async_api/1.0/calculate_analytic", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<OptimizerAnalyticsVO> getOptimizerAnalyticsInfo(@RequestHeader("Authorization") String bearerToken, @RequestBody String requestDetails);
+
+    // PackIT End-points
+    @GetMapping(value = "/Embasypkginstr/v1/api/NileDU/GetDUTransformationData")
+    ResponseEntity<List<PackagingDUResponseVO>> getDistributionUnits(@RequestHeader("Authorization") String bearerToken, @RequestParam("fromDate") String fromDate, @RequestParam("toDate") String toDate);
+
+    @GetMapping(value = "/Embasypkgcode/v1/api/Embasypkgcode")
+    ResponseEntity<List<PackCodeVO>> getPackagingCodes(@RequestHeader("Authorization") String bearerToken, @RequestParam("fromDate") String fromDate, @RequestParam("toDate") String toDate);
+
+    @GetMapping(value = "/Embasypkginstr/v1/api/Embasypkginstr")
+    ResponseEntity<List<MasterPackItVO>> getPackagingInstructions(@RequestHeader("Authorization") String bearerToken, @RequestParam("fromDate") String fromDate, @RequestParam("toDate") String toDate);
+
+    @GetMapping(value = "PackagingData/1/packitdevapi/pi")
+    ResponseEntity<List<PackInstructionVO>> getPackagingInstructionsNew(@RequestHeader("Authorization") String bearerToken, @RequestParam("changedDate")String changedDate);
+
+    @GetMapping(value = "/Embasypkginstr/v1/api/NilePM/GetPMTransformationData")
+    ResponseEntity<List<PackagingPMResponseVO>> getPackagingMaterials(@RequestHeader("Authorization") String bearerToken, @RequestParam("fromDate") String fromDate, @RequestParam("toDate") String toDate);
+
+    // S360 End-points
+    @PostMapping(value = "/s360contacts/v1/getSupplierContacts", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<SupplierContactsDetailsVO> getS360ContactDetails(@RequestHeader("Authorization") String bearerToken, @RequestBody String requestDetails);
+
+    // SSIP End-points
+    @GetMapping(value = "/suppliers/1.0.5/api/Supplier/GetSupplierDetails")
+    ResponseEntity<List<SSIPResponseVO>> getSSPISupplierDetails(@RequestHeader("Authorization") String bearerToken, @RequestParam("StartDate") String startDate, @RequestParam("EndDate") String endDate);
+
+    // WebStars End-points
+    @GetMapping(value = "/webstars/1.0/webstars/getpru")
+    ResponseEntity<List<WebstarsPru>> getWebStarsPru(@RequestHeader("Authorization") String bearerToken);
+
+    @GetMapping(value = "/webstars/1.0/webstars/sbmbconfigs")
+    ResponseEntity<List<WebstarsPackagSbMbConfig>> getSbmbConfigs(@RequestHeader("Authorization") String bearerToken);
+
+    @GetMapping(value = "/webstars/1.0/webstars/supplierinfo")
+    ResponseEntity<List<WebstarsSupplier>> getSupplierInfo(@RequestHeader("Authorization") String bearerToken);
+
+    @GetMapping(value = "/webstars/1.0/webstars/getconsignmentsbytype/{consignmenttype}/{pickupdate}")
+    ResponseEntity<List<ConsignmentResponseVO>> getConsignmentsByType(@RequestHeader("Authorization") String bearerToken, @PathVariable("consignmenttype") String type, @PathVariable("pickupdate") String pickUpDate);
+}
+
+
