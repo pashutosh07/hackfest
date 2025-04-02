@@ -1,0 +1,913 @@
+<div class="container-fluid mx-0 px-0">
+  <h2 class="pt-2 mb-0">Return Order</h2>
+
+  <!-- Consignor/Sender Search -->
+  <app-organisation-search [organisations]="packUsers" [selectedOrganisation]="supplier" (organisationSelection)="getOrganisationSelection($event)"
+                           [showSearch]="true" *ngIf="isAdminOrPlanner"></app-organisation-search>
+
+  <div class="row" *ngIf="supplier?.type === 'P'">
+    <div class="col-sm-12">
+      <nile-message type="error">PHCs don't have access to this page.</nile-message>
+    </div>
+  </div>
+
+  <!-- Consignor/Sender Details -->
+  <div class="row border rounded mx-0 px-0 py-2 mt-2" *ngIf="supplier && returnOrderForm">
+    <form [formGroup]="returnOrderForm">
+      <div class="col-sm-12 px-0">
+        <div class="row mt-1 mx-0">
+          <label for="organization" class="col-sm-2 font-weight-bold">Name</label>
+          <div class="col-sm-4 my-auto" id="organization">
+            <h6> {{returnOrder.organization}} ({{supplier.supplierNo}})</h6>
+          </div>
+          <label for="contactEmail" class="col-sm-1 font-weight-bold">Email</label>
+          <div class="col-sm-5 my-auto px-0">
+            <input id="contactEmail" formControlName="contactEmail" class="form-control w-75" [readonly]="!isAdminOrPlanner"
+                [ngClass]="{'ng-invalid': returnOrderForm.controls.contactEmail.invalid}"
+                pTooltip="Enter a valid email address.">
+            <div class="text-danger my-2" *ngIf="returnOrderForm.controls.contactEmail.touched && returnOrderForm.controls.contactEmail.invalid">
+                <span *ngIf="returnOrderForm.controls.contactEmail.errors?.['required']">Email is required.</span>
+            </div>
+          </div>
+          <label for="pickupAddress" class="col-sm-2 mt-2 font-weight-bold">Pickup Address</label>
+          <nile-spinner class="text-center col-sm-1" *ngIf="!addresses"></nile-spinner>
+          <p-dropdown id="pickupAddress" class="col-sm-4 mt-2" [options]="addresses" formControlName="pickupAddressId" optionValue="addressId"
+                      [optionLabel]="'fullAddress'" [styleClass]="'w-100'" (onChange)="getRouteDetails()" *ngIf="addresses">
+          </p-dropdown>
+          <label for="contactPhone" class="col-sm-1 mt-2 font-weight-bold">Phone</label>
+          <div class="col-sm-5 my-2 px-0">
+            <span class="d-inline-block w-25 pr-2">
+            <p-autoComplete id="countryCode" formControlName="countryCode" dataKey='dialCode' field="dialCode" [suggestions]="filteredCountries" (completeMethod)="filterCountry($event)"
+                            [dropdown]="true" [autoHighlight]="true" [forceSelection]="true" [inputStyleClass]="returnOrderForm.controls.countryCode.invalid ? 'ng-invalid' : ''">
+              <ng-template let-country pTemplate="item">
+                <div class="flex align-items-center gap-2">
+                  <div>
+                    <img [alt]="country.name" src="https://primefaces.org/cdn/primeng/images/demo/flag/flag_placeholder.png" [class]="'flag flag-width flag-' + country.code.toLowerCase()"/>
+                    {{ country.name }} ({{country.dialCode}})
+                  </div>
+                </div>
+              </ng-template>
+            </p-autoComplete>
+            </span>
+            <span class="d-inline-block w-50">
+              <input id="contactPhone" formControlName="contactPhone" class="form-control" [ngClass]="{'ng-invalid': returnOrderForm.controls.contactPhone.invalid}"
+                     pTooltip="Please enter contact number without country code.<br/><br/>Minimum length: 6<br/>Maximum length: 15">
+            </span>
+            <span class="d-inline-block w-25">&nbsp;</span>
+            <div class="d-inline-block text-danger my-2 w-100 small" *ngIf="returnOrderForm.invalid">
+              <span *ngIf="returnOrderForm.get('countryCode').invalid">Select Country Code</span>
+              <span *ngIf="returnOrderForm.get('contactPhone').invalid" class="ml-2">Enter Valid Contact Number</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="row" *ngIf="supplier && supplier?.type !== 'P'">
+    <!-- Error Messages -->
+    <div class="col-sm-12 mb-2" *ngIf="addresses?.length === 0 || !selectedRoute || returnOrder?.orderSpecs?.truckQty > 1" id="errorMessages">
+      <nile-message type="error">
+        <div *ngIf="addresses?.length === 0">Contact your Scania Purchaser to register address.</div>
+        <div *ngIf="addresses?.length > 0 && !selectedRoute">There is no route for the selected address, please contact <a href="mailto:packaging.planning@scania.com">Packaging Planning Team</a> for support.</div>
+        <div *ngIf="returnOrder?.orderSpecs?.truckQty > 1">Order larger than 1 truck, reduce order size.</div>
+      </nile-message>
+    </div>
+
+    <div class="col-sm-10">
+      <!-- Packaging List -->
+      <div class="row ml-0 px-0" *ngIf="selectedRoute">
+        <div class="col-sm-10 d-inline-flex justify-content-start my-2 px-0 bg-light">
+          <div class="w-100">
+            <nile-message type="information">
+              Please pack the material according to <a href="https://packit.scania.com/#/welcome" target="_blank">PackIT</a> Instructions.
+            </nile-message>
+          </div>
+        </div>
+        <div class="col-sm-2 d-inline-flex my-2 px-0 justify-content-end bg-light">
+          <nile-spinner class="text-center" *ngIf="!allPackagingNos"></nile-spinner>
+          <button class="btn btn-primary nile-btn-lg" (click)="getPackagingNo()"
+                       [disabled]="!selectedRoute || !allPackagingNos || returnOrder?.orderSpecs?.truckQty > 1">Add Packaging Number</button>
+        </div>
+        <div class="col-sm-12 border rounded px-0" *ngIf="selectedRoute && addresses?.length > 0">
+          <p-progressBar *ngIf="!packagingList" mode="indeterminate" styleClass="nile-progress-bar"></p-progressBar>
+          <p-table #packagingsDT [scrollable]="true" [value]="packagingList"
+                   [paginator]="true" [rows]="10" [rowsPerPageOptions]="[10, 25]" [showCurrentPageReport]="true"
+                   [globalFilterFields]="['mhNumber','description']"
+                   currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+                   styleClass="p-datatable-gridlines p-datatable-sm">
+            <ng-template pTemplate="caption">
+              <div class="d-flex">
+                <span>Return Packagings</span>
+                <span class="ml-auto">
+                  <div class="input-group pull-right">
+                    <div class="input-group-prepend">
+                      <span class="input-group-text">
+                        <i class="pi pi-search"></i>
+                      </span>
+                    </div>
+                    <input class="form-control form-control-sm nile-table-search" placeholder="Search by Packaging No, Description"
+                           pInputText type="text" (input)="packagingsDT.filterGlobal($event.target.value, 'startsWith')"/>
+                  </div>
+                </span>
+              </div>
+            </ng-template>
+            <ng-template pTemplate="header">
+              <tr class="return-order-header">
+                <th scope="col" pSortableColumn="mhNumber">Packaging Number
+                  <p-sortIcon [field]="'mhNumber'"></p-sortIcon>
+                </th>
+                <th scope="col" pSortableColumn="description">Description
+                  <p-sortIcon [field]="'description'"></p-sortIcon>
+                </th>
+                <th scope="col" pSortableColumn="orderUnits">
+                  Units to Return<nile-icon name="info" size="16px" class="ml-2" pTooltip="Enter the number of 'Units/Collis' to Return"></nile-icon>
+                  <p-sortIcon [field]="'orderUnits'"></p-sortIcon>
+                </th>
+                <th scope="col" pSortableColumn="orderUnfinishedPcs">
+                  Unfinished Pcs  to Return<nile-icon name="info" size="16px" class="ml-2" pTooltip="Enter the unfinished pcs (if any), not part of Units/Collis"></nile-icon>
+                  <p-sortIcon [field]="'orderUnfinishedPcs'"></p-sortIcon>
+                </th>
+                <th scope="col" pSortableColumn="totalUnits">
+                  Total Returns<nile-icon name="info" size="16px" class="ml-2" pTooltip="Total number of units returned (Rounded up value) = Entered Return Units/Collis + Entered Unfinished Pcs"></nile-icon>
+                  <p-sortIcon [field]="'totalUnits'"></p-sortIcon>
+                </th>
+                <th scope="col" pSortableColumn="stdOutPackIncl">
+                  Outer Packagings Included<nile-icon name="info" size="16px" class="ml-2" pTooltip="Is it packed according to PackIT instructions?"></nile-icon>
+                </th>
+                <th scope="col">&nbsp;</th>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="body" let-balance>
+              <tr>
+                <td>{{balance.mhNumber}}</td>
+                <td>{{balance.description}}</td>
+                <td>
+                  <span class="d-inline-block nile-order-input">
+                    <input type="number" tabindex="1" min="0" class="form-control form-control-sm"
+                           [(ngModel)]="balance.orderUnits" (ngModelChange)="calculateTotalOrderUnits(balance)" oninput="validity.valid||(value=0);"
+                           (focusin)="NileUtils.input0toBlank($event.target)" (blur)="NileUtils.inputBlankTo0($event.target)">
+                  </span>
+                  <span class="d-inline-block nile-order-units pl-2">(Units/Collis)</span>
+                </td>
+                <td>
+                  <span class="d-inline-block nile-order-input">
+                    <input type="number" tabindex="2" min="0" class="form-control form-control-sm"
+                           [(ngModel)]="balance.orderUnfinishedPcs" (ngModelChange)="calculateTotalOrderUnits(balance)" oninput="validity.valid||(value=0);"
+                           (focusin)="NileUtils.input0toBlank($event.target)" (blur)="NileUtils.inputBlankTo0($event.target)">
+                  </span>
+                  <span class="d-inline-block nile-order-units pl-2">(Pcs)</span>
+                </td>
+                <td><span class="nile-order-input">{{balance.totalUnits}}</span><span class="nile-order-units pl-2">(Units/Collis)</span></td>
+                <td><input type="checkbox" class="w-50 text-center" [(ngModel)]="balance.stdOutPackIncl"></td>
+                <td class="file-upload">
+                  <button type="submit" class="d-inline-block btn border py-0 mr-1" (click)="getImageUpload(balance)" [disabled]="balance.totalUnits === 0"
+                          [ngClass]="{'image-upload-disable' : balance.totalUnits === 0, 'border-dark' : balance.totalImages, 'border-danger text-danger' : balance.totalUnits > 0 && !balance.totalImages}">
+                    <nile-icon name="image_add" size="20px"></nile-icon> {{balance.totalImages ? balance.totalImages : 0}}
+                  </button>
+                  <button class="d-inline-block btn btn-outline-dark nile-btn-secondary py-0" (click)="clearData(balance)"><span class="small">Clean data</span></button>
+                </td>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="emptymessage">
+              <td colspan="7" class="text-center py-2">
+                <span *ngIf="!packagingList">Loading data for packaging details</span>
+                <span *ngIf="packagingList?.length === 0">
+                  <nile-message type="error">
+                    No packaging detail assigned to {{ supplier.name }} ({{ supplier.supplierNo }})
+                  </nile-message>
+                </span>
+              </td>
+            </ng-template>
+          </p-table>
+        </div>
+      </div>
+
+      <!-- Buttons-->
+      <div class="row ml-0 px-0 mt-2" *ngIf="packagingList">
+        <div class="col-md-6 d-inline-flex justify-content-start px-0 m-0">
+          <button type="button" class="btn btn-outline-dark nile-btn-lg" (click)="openResetConfirmation()"
+                  [disabled]="!returnOrder.packagingList || returnOrder.packagingList.length === 0">Reset</button>
+        </div>
+        <div class="col-md-6 d-inline-flex justify-content-end p-0 m-0">
+          <button class="btn btn-outline-dark nile-btn-secondary-lg" (click)="getReturnDeliveries()">Return Deliveries</button>
+          <button class="btn btn-primary nile-btn-lg ml-2" (click)="getOrderOverview()"
+                       [pTooltip]="(!returnOrder.packagingList || returnOrder.packagingList?.length === 0) ? 'Please enter number of units to order' : null"
+                       [disabled]="returnOrderForm.invalid || !returnOrder.packagingList || returnOrder.packagingList?.length === 0 || returnOrder?.orderSpecs?.truckQty > 1
+                                    || imageRepository?.size !== returnOrder.packagingList?.length">Submit Order</button>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-2 mt-2" *ngIf="returnOrder">
+      <app-order-specs [orderSpecs]="returnOrder.orderSpecs"></app-order-specs>
+      <div class="truck-warning-card">
+        <nile-messagee type="warning">
+          <div class="tds-detail-03">Please keep the order under 1 truck.</div>
+        </nile-messagee>
+      </div>
+      <div class="form-group row mx-0 mt-2">
+        <label for="remark" class="col-sm-12 font-weight-bold px-0">Remarks</label>
+        <div class="col-sm-12 px-0" id="remark">
+          <textarea [(ngModel)]="returnOrder.remarks" pInputTextarea [autoResize]="true" class="form-control"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p-dialog header="Return Deliveries" [(visible)]="showReturnOrders" styleClass="nile-popup">
+  <app-order-deliveries [deliveries]="returnOrders" [type]="DeliveryType.return" [sortColumns]="['pickupDate']" *ngIf="returnOrders"></app-order-deliveries>
+</p-dialog>
+
+<p-dialog header="{{!pickupDate || !showOrderConfirmation ? 'Set Return Reason and Pickup Dates' : 'Order Overview' + (returnOrder?.orderId > 0 ? (' for order Id: ' + returnOrder.orderId) : '')}}"
+          [(visible)]="showOrderOverview" styleClass="nile-popup" *ngIf="returnOrder" (onHide)="orderAction('edit')"
+          [modal]="true" [closable]="true" [draggable]="false">
+<div class="mb-0">
+    <div *ngIf="!showOrderConfirmation && returnOrderForm" class="mb-3">
+      <p-accordion [multiple]="true" [activeIndex]="[0, 1]">
+        <p-accordionTab header="Return Reason">
+          <form [formGroup]="returnOrderForm" class="w-100">
+            <div class="row ml-2 px-0 py-2 small">
+              <nile-spinner class="text-center col-sm-1" *ngIf="!reasons"></nile-spinner>
+              <div class="col-sm-4" id="reasonForReturn" *ngIf="reasons">
+                <p-dropdown id="returnReason" [options]="reasons" formControlName="reasonName" optionValue="reasonName"
+                            [optionLabel]="'reasonName'" (onChange)="onReasonSelectionChange()" [placeholder]="'Select Reason'">
+                </p-dropdown>
+              </div>
+              <div *ngIf="returnOrderForm.get('reasonName').value === 'Other'" class="col-sm-5">
+                <textarea formControlName="customReason" pInputTextarea [autoResize]="true" class="form-control"
+                          placeholder="Please Specify" maxlength="100"></textarea>
+              </div>
+            </div>
+          </form>
+        </p-accordionTab>
+        <p-accordionTab header="Pickup Dates">
+          <nile-message type="information">
+            Possible unloading between 08:00 and 17:00.<br/><br/>
+            Please select the pickup date.
+          </nile-message>
+          <div *ngIf="!are3DaysOpen" class="mt-2">
+            <nile-message type="error">
+              You need to have at least 3 open days to create an order
+            </nile-message>
+          </div>
+          <div class="form-group row mx-0 mt-2">
+            <label for="dateCalendar" class="col-sm-1 font-weight-bold">Date</label>
+            <div class="col no-month-navigator" id="dateCalendar">
+              <app-nile-calendar [customCalendar]="customCalendar" (dateSelection)="setPickupRange($event)" *ngIf="customCalendar"></app-nile-calendar>
+            </div>
+          </div>
+        </p-accordionTab>
+      </p-accordion>
+    </div>
+    <app-order-overview [orderOverview]="orderOverview" *ngIf="showOrderConfirmation && orderOverview"></app-order-overview>
+    <div class="col d-inline-flex justify-content-end align-items-center px-0 mx-0">
+      <nile-spinner class="text-center" *ngIf="orderCreationInProgress"></nile-spinner>
+      <button class="btn btn-outline-dark nile-btn-secondary-lg" (click)="orderAction('edit')"
+                   *ngIf="!orderCreationInProgress && returnOrder.orderId === 0">Edit</button>
+      <button class="btn btn-primary nile-btn-lg ml-2" (click)="orderAction('orderOverview')"
+                   *ngIf="!showOrderConfirmation" [pTooltip]="are3DaysOpen ? null : 'You need to have at least 3 consecutive open days to create an order'"
+                   [disabled]="!returnOrder.pickupDates || !are3DaysOpen || !returnOrderForm.value.reasonName || (returnOrderForm.value.reasonName === 'Other' && !returnOrderForm.value.customReason )">Order Overview</button>
+      <button class="btn btn-primary nile-btn-lg ml-2" (click)="orderAction('confirm')"
+                   [disabled]="orderCreationInProgress" *ngIf="showOrderConfirmation && returnOrder.orderId === 0">Confirm</button>
+      <button class="btn btn-primary nile-btn-lg ml-2" (click)="orderAction('done')" *ngIf="returnOrder.orderId > 0">Done</button>
+    </div>
+  </div>
+</p-dialog>
+
+<p-dialog header="Add Packaging Number" [(visible)]="showAddPackagingNo" [styleClass]="'nile-popup-sm'" [modal]="true">
+  <div class="row" *ngIf="showAddPackagingNo">
+    <div class="col-md-12 mb-4" *ngIf="damagedPackaging">
+      <nile-message type="error">Enter correct Packaging Number or Contact Packaging Planner.</nile-message>
+    </div>
+    <div class="col-md-6 font-weight-bold pr-0 my-1">Packaging Number</div>
+    <div class="col-md-6 my-1">
+      <p-dropdown [options]="eligiblePackagingNos" [(ngModel)]="returnOrderPackaging.mhNumber" optionValue="mhNumber" [filter]="true" filterBy="mhNumber"
+                  [styleClass]="'w-100'" placeholder="Select a Packaging" (ngModelChange)="getMHNumberDetails()" [showClear]="true" appendTo="body">
+        <ng-template pTemplate="selectedItem">
+          <div class="flex align-items-center gap-2" *ngIf="returnOrderPackaging.mhNumber">
+            <div>{{ returnOrderPackaging.mhNumber }}</div>
+          </div>
+        </ng-template>
+        <ng-template let-item pTemplate="item">
+          <div class="flex align-items-center gap-2">
+            <div>{{item.mhNumber}}: {{item.description}}</div>
+          </div>
+        </ng-template>
+      </p-dropdown>
+    </div>
+    <div class="col-md-6 font-weight-bold pr-0 my-1">
+      Units to Return<nile-icon name="info" size="16px" class="ml-2" pTooltip="Enter the Number of 'Units/Collis' to Return"></nile-icon>
+    </div>
+    <div class="col-md-6 my-1">
+      <input type="number" tabindex="1" min="0" [(ngModel)]="returnOrderPackaging.orderUnits" (ngModelChange)="calculateTotalOrderUnits(returnOrderPackaging)"
+             oninput="validity.valid||(value=0);" [disabled]="!returnOrderPackaging.mhNumber" class="form-control form-control-sm w-50"
+             (focusin)="NileUtils.input0toBlank($event.target)" (blur)="NileUtils.inputBlankTo0($event.target)"></div>
+    <div class="col-md-6 font-weight-bold pr-0 my-1">
+      Unfinished Pcs  to Return<nile-icon name="info" size="16px" class="ml-2" pTooltip="Enter the unfinished Pcs (if any), not part of Units/Collis"></nile-icon>
+    </div>
+    <div class="col-md-6 my-1">
+      <input type="number" tabindex="1" min="0" [(ngModel)]="returnOrderPackaging.orderUnfinishedPcs" (ngModelChange)="calculateTotalOrderUnits(returnOrderPackaging)"
+             oninput="validity.valid||(value=0);" [disabled]="!returnOrderPackaging.mhNumber" class="form-control form-control-sm w-50"
+             (focusin)="NileUtils.input0toBlank($event.target)" (blur)="NileUtils.inputBlankTo0($event.target)"></div>
+    <div class="col-md-6 font-weight-bold pr-0 my-1">
+      Total Returns<nile-icon name="info" size="16px" class="ml-2" pTooltip="Total Number of Units returned (Rounded up value) = Entered Return Units/Collis + Entered Unfinished Pcs"></nile-icon>
+    </div>
+    <div class="col-md-6 my-1">{{returnOrderPackaging.totalUnits}}</div>
+    <div class="col-md-6 font-weight-bold pr-0 my-1">
+      Outer Pack. Incl. (Pcs)<nile-icon name="info" size="16px" class="ml-2" pTooltip="Is it packed according to PackIT instructions?"></nile-icon>
+    </div>
+    <div class="col-md-6 my-1"><input type="checkbox" [(ngModel)]="returnOrderPackaging.stdOutPackIncl" [disabled]="!returnOrderPackaging.mhNumber"></div>
+    <div class="col-md-12 mt-2">
+      <button type="button" class="btn btn-outline-dark" (click)="showAddPackagingNo = false">Cancel</button>
+      <button type="submit" class="btn btn-primary float-right" (click)="addPackagingNo()" [disabled]="!returnOrderPackaging.mhNumber || damagedPackaging">Save</button>
+    </div>
+  </div>
+</p-dialog>
+
+<p-dialog header="Add Images" [(visible)]="showUploadImage" styleClass="nile-popup" [modal]="true" *ngIf="returnOrderPackaging">
+  <app-nile-upload [nile-file-upload]="nileFileUpload" (addFiles)="addImages($event)" (removeFiles)="removeImages($event)" (removeAllFiles)="removeAllImages($event)"></app-nile-upload>
+</p-dialog>
+
+<p-confirmDialog [styleClass]="'nile-popup-sm'" [closable]="false"></p-confirmDialog>
+
+
+import {Component, OnInit} from '@angular/core';
+import {Address, AuthenticationService, Consignor, Packaging} from '@app/core';
+import {ReturnOrder} from '@app/core/models/return-order';
+import {ViewOrderDeliveries} from '@app/core/models/view-order-deliveries';
+import {NileSharedService, ToastService} from '@app/shared/services';
+import * as _ from 'lodash';
+import {TransportType} from '@app/core/models/transport-type';
+import {NileUtils} from '@app/shared/utils/nile-utils';
+import {RouteDetails} from '@app/core/models/route-details';
+import {RouteDetailsService} from '@app/pages/settings/route-details/route-details.service';
+import {ReturnOrderService} from '@app/pages/create-order/return-order/return-order.service';
+import * as moment from 'moment';
+import {NileCalendarService} from '@app/pages/calendar/nile-calendar.service';
+import {OrderPackagings} from '@app/core/models/packaging-order';
+import {LoadMeters} from '@app/core/models/load-meters';
+import {NileCustomCalendar} from '@app/components/nile-calendar/nile-calendar.model';
+import {
+  CalendarDaysType,
+  CalendarType,
+  DeviationReasonType,
+  NileFileUploadType,
+  NileUserRoles,
+  OrderType,
+  PackUserType
+} from '@app/shared/models/nile-enums';
+import {UntypedFormBuilder, UntypedFormGroup, Validators} from '@angular/forms';
+import {CountryCode} from '@app/shared/models/country-code';
+import {NileFileUpload} from '@app/shared/models/nile-media';
+import {NileCalendarDateUtils} from '@app/shared/utils/nile-calendar-date-utils';
+import {DeviationReason} from '@app/core/models/deviation-reason';
+import {DeviationService} from '@app/pages/deviations/deviation.service';
+import {ConfirmationService} from 'primeng/api';
+import {OrderService} from '@app/shared/services/order.service';
+import {AddressService} from '@app/shared/services/address.service';
+import {OrderOverview} from '@app/core/models/order-overview';
+import {NileConverter} from '@app/shared/converter/nile-converter';
+import {PackagingUsersService} from '@app/shared/services/packaging-users.service';
+
+@Component({
+  selector: 'app-return-order',
+  templateUrl: './return-order.component.html',
+  styleUrls: ['./return-order.component.scss'],
+  providers: [ConfirmationService]
+})
+export class ReturnOrderComponent implements OnInit {
+
+  returnOrderForm: UntypedFormGroup;
+
+  returnOrder: ReturnOrder;
+  returnOrderPackaging: OrderPackagings;
+  supplier: any;
+  countryCodes: CountryCode[];
+  packUsers: Consignor[];
+  addresses: Address[];
+  transportTypes: TransportType[];
+  selectedRoute: RouteDetails;
+  calendarDaysType: CalendarDaysType;
+  minCalendarDate: Date = new Date();
+  maxCalendarDate: Date = new Date();
+  showReturnOrders: boolean;
+  showOrderOverview: boolean;
+  showAddPackagingNo: boolean;
+  showOrderConfirmation: boolean;
+  showUploadImage: boolean;
+  damagedPackaging: boolean;
+  are3DaysOpen: boolean;
+  returnOrders: ViewOrderDeliveries[];
+  allPackagingNos: Packaging[];
+  eligiblePackagingNos: Packaging[];
+  closedDates: string[];
+  packagingList: OrderPackagings[];
+  mhNumbers: string[];
+  pickupDate: Date;
+  customCalendar: NileCustomCalendar;
+  imageRepository: Map<string, File[]>;
+  countryCode: CountryCode;
+  filteredCountries: CountryCode[];
+  isAdminOrPlanner = false;
+  orderCreationInProgress = false;
+  nileFileUpload: NileFileUpload;
+  reasons: DeviationReason[];
+  orderOverview: OrderOverview;
+
+  protected readonly DeliveryType = CalendarType;
+  protected readonly NileUtils = NileUtils;
+
+  constructor(private readonly returnOrderFormBuilder: UntypedFormBuilder,
+              private readonly addressService: AddressService,
+              private readonly authenticationService: AuthenticationService,
+              private readonly confirmationService: ConfirmationService,
+              private readonly nileCalendarService: NileCalendarService,
+              private readonly nileSharedService: NileSharedService,
+              private readonly orderService: OrderService,
+              private readonly packagingUsersService: PackagingUsersService,
+              private readonly routeDetailsService: RouteDetailsService,
+              private readonly returnOrderService: ReturnOrderService,
+              private readonly toastService: ToastService,
+              private readonly deviationService: DeviationService) {
+  }
+
+  ngOnInit() {
+    this.countryCodes = this.nileSharedService.getCountryCodes();
+    this.maxCalendarDate.setMonth(this.minCalendarDate.getMonth() + 1);
+
+    const roleByUser = this.authenticationService.getRoleByUser();
+    this.isAdminOrPlanner = roleByUser === NileUserRoles.NILE_ADMIN || roleByUser === NileUserRoles.NILE_PLANNER;
+
+    this.packagingUsersService.getConsignorsList('M,P,S,U').subscribe(
+      data => {
+        this.packUsers = data;
+        const sessionSupplerNumber = sessionStorage.getItem('supplier');
+        if (this.packUsers.length === 1) {
+          this.supplier = this.packUsers[0];
+          this.searchSupplier(this.supplier);
+        } else if (sessionSupplerNumber) {
+          this.supplier = this.packUsers.find(packUser => packUser.supplierNo === sessionSupplerNumber);
+          this.searchSupplier(this.supplier);
+        }
+
+        if (roleByUser !== NileUserRoles.NILE_ADMIN && roleByUser !== NileUserRoles.NILE_PLANNER) {
+          const selectedOrganizationId = this.nileSharedService.getSelectedOrganizationId();
+          if (selectedOrganizationId !== null && this.packUsers.length > 1) {
+            this.supplier = this.packUsers.find(ele => ele.supplierNo === selectedOrganizationId);
+            this.searchSupplier(this.supplier);
+          }
+        }
+      },
+      error => {
+        this.toastService.showFailureToast('Error', error.error);
+      }
+    );
+    this.initTransportTypes();
+  }
+
+  private initTransportTypes() {
+    this.nileSharedService.getTransportTypes().subscribe(
+      data => {
+        this.transportTypes = data;
+      },
+      error => {
+        this.toastService.showFailureToast('Error', error.error);
+      });
+  }
+
+  searchSupplier(selectedCons: any) {
+    let supplier: Consignor;
+    if (typeof selectedCons === 'string') {
+      supplier = this.packUsers.filter(ele => ele.supplierNo === selectedCons)[0];
+    } else {
+      supplier = selectedCons;
+    }
+
+    if (supplier === undefined) {
+      this.toastService.showFailureToast('Invalid organisation id', `Enter valid organisation id`);
+      return;
+    }
+
+    sessionStorage.setItem('supplier', supplier.supplierNo);
+    this.supplier = supplier;
+
+    if (supplier.type !== PackUserType.PHC) {
+      this.calendarDaysType = supplier.type === PackUserType.SCANIA_UNIT ? CalendarDaysType.NON_WORKING_DAY : CalendarDaysType.WORKING_DAY;
+
+      this.returnOrder = new ReturnOrder();
+      this.returnOrder.packUserId = supplier.packUserId;
+      this.returnOrder.supplierNo = supplier.supplierNo;
+      this.returnOrder.organization = supplier.name;
+      this.returnOrder.orderSpecs = new LoadMeters();
+
+      this.getSupplierDetails();
+    }
+  }
+
+  private setupForm() {
+    this.returnOrderForm = this.returnOrderFormBuilder.group({
+      organization: [this.returnOrder.organization],
+      contactEmail: [this.returnOrder.contactEmail, [Validators.required, Validators.email]],
+      pickupAddressId: [this.returnOrder.pickupAddressId, [Validators.required]],
+      countryCode: [this.countryCode, [Validators.required]],
+      contactPhone: [this.returnOrder.contactPhone, [Validators.required, Validators.pattern(/^-?(0|[1-9]\d*)?$/),
+        Validators.minLength(6), Validators.maxLength(15)]],
+      reasonName: [this.returnOrder.reason],
+      customReason: [{value: '', disabled: true}]
+    });
+  }
+
+  getSupplierDetails() {
+    this.packagingList = null;
+    this.returnOrder.contactEmail = this.nileSharedService.getDisplayUserName();
+    const contactDetails = NileUtils.getContactDetails(this.nileSharedService.getContactNumber(), this.countryCodes);
+    if (contactDetails.length === 2) {
+      this.countryCode = _.find(this.countryCodes, {dialCode: contactDetails[0]});
+      this.returnOrder.contactPhone = contactDetails[1];
+      this.filteredCountries = _.filter(this.countryCodes, {dialCode: this.countryCode});
+    } else {
+      this.returnOrder.contactPhone = contactDetails[0];
+    }
+    this.initAddress();
+    this.initMH();
+  }
+
+  getOrganisationSelection(selectedOrg: any) {
+    if (selectedOrg !== null) {
+      this.searchSupplier(selectedOrg);
+    }
+
+    this.supplier = selectedOrg;
+  }
+
+  initAddress() {
+    this.addresses = [];
+    this.addressService.getPickupAddress(this.returnOrder.packUserId).subscribe(
+      data => {
+        this.addresses = data;
+        this.addresses.sort((a, b) => a.zipcode.localeCompare(b.zipcode));
+        const selectedAddress = this.addresses.find(a => a.head === true);
+        this.returnOrder.pickupAddressId = selectedAddress ? selectedAddress.addressId : 0;
+        this.returnOrder.pickupAddress = selectedAddress ? selectedAddress.fullAddress : 'N/A';
+        this.initReasons();
+        this.setupForm();
+        this.getRouteDetails();
+      },
+      error => {
+        this.toastService.showFailureToast('Error', error.error);
+      });
+  }
+
+  initReasons() {
+    this.deviationService.getDeviationReason(DeviationReasonType.RETURN_ORDER).subscribe(
+      (data: DeviationReason[]) => {
+        this.reasons = data;
+      },
+      (error) => {
+        this.toastService.showFailureToast('Error', error.error);
+      }
+    );
+  }
+
+  onReasonSelectionChange() {
+    if (this.returnOrderForm.value.reasonName === 'Other') {
+      this.returnOrderForm.get('customReason').enable();
+    } else {
+      this.returnOrderForm.get('customReason').disable();
+      this.returnOrderForm.get('customReason').reset();
+    }
+  }
+
+  getRouteDetails() {
+    this.packagingList = null;
+    this.imageRepository = new Map<string, any[]>();
+    this.returnOrder.pickupAddressId = this.returnOrderForm.value.pickupAddressId;
+    const address: Address = _.find(this.addresses, {addressId: this.returnOrder.pickupAddressId});
+    this.returnOrder.pickupAddress = address ? address.fullAddress : 'N/A';
+
+    this.routeDetailsService.getRouteDetails(OrderType.RETURN, this.supplier.supplierNo, address).subscribe(routeDetails => {
+        this.selectedRoute = routeDetails;
+        this.getViewBalanceData();
+        this.getCalendarDates();
+      },
+      error => {
+        this.selectedRoute = null;
+      });
+  }
+
+  getViewBalanceData() {
+    this.returnOrderService.getPackagingList(this.supplier.packUserId).subscribe(res => {
+        this.packagingList = res.packagingList;
+        this.mhNumbers = _.chain(this.packagingList).map('mhNumber').uniq().value();
+        this.packagingList = _.sortBy(this.packagingList, 'mhNumber');
+      },
+      error => {
+        this.packagingList = [];
+        this.toastService.showFailureToast('Error', error.error);
+      });
+  }
+
+  getCalendarDates() {
+    this.nileCalendarService.getCalendarDates(this.supplier.packUserId, CalendarDaysType.FUTURE).subscribe(
+      res => {
+        if (res != null) {
+          const weekends = NileCalendarDateUtils.getWeekendsForMonths(new Date(), this.maxCalendarDate);
+          const workingDates = res.workingDates;
+          const nonWorkingDates = res.nonWorkingDates;
+
+          if (this.calendarDaysType === CalendarDaysType.WORKING_DAY) {
+            this.closedDates = NileCalendarDateUtils.getAllDaysForMonths(2);
+            // For manufacturer/supplier, all the days from today till next 2 months are closed days by default.
+            _.pullAll(this.closedDates, workingDates); // Remove working dates from closed dates, if any.
+          } else {
+            // For pru/phc, all the weekends from today till next 2 months are closed days by default.
+            const weekendDates = NileCalendarDateUtils.convertDateToString(weekends);
+            const workingWeekends = _.intersection(workingDates, weekendDates);
+            this.closedDates = _.union(weekendDates, nonWorkingDates);
+            _.pullAll(this.closedDates, workingWeekends);
+          }
+        }
+      },
+      error => {
+        this.toastService.showFailureToast('Error', error.error);
+      });
+  }
+
+  initMH() {
+    this.packagingUsersService.getValidPackagings().subscribe(res => {
+        this.allPackagingNos = res;
+      },
+      error => {
+        this.toastService.showFailureToast('Error', error.error);
+      });
+  }
+
+  getReturnDeliveries() {
+    this.orderService.getOrdersByPackUserIdByDeliveryType(this.supplier.packUserId, 'Return').subscribe(
+      data => {
+        this.returnOrders = _.chain(data).map(order => {
+          order.pickupDate = order.pickupDate ? order.pickupDate : NileCalendarDateUtils.getEndOfTheWorldDate();
+          // This is a hack till we hear from business about null eta/pickup dates
+          return order;
+        }).value();
+        this.showReturnOrders = true;
+      },
+      error => {
+        this.toastService.showFailureToast('Error', error.error);
+      });
+  }
+
+  getPackagingNo() {
+    const mhNumbers = _.map(this.packagingList, 'mhNumber');
+    this.eligiblePackagingNos = _.reject(this.allPackagingNos, pack => mhNumbers.includes(pack.mhNumber));
+    this.eligiblePackagingNos = _.sortBy(this.eligiblePackagingNos, 'mhNumber');
+    this.returnOrderPackaging = new OrderPackagings();
+    this.initializeVO(this.returnOrderPackaging);
+    this.showAddPackagingNo = true;
+    this.damagedPackaging = false;
+  }
+
+  addPackagingNo() {
+    this.returnOrderPackaging.type = 'additional';
+    this.packagingList.unshift(this.returnOrderPackaging);
+    this.packagingList = _.sortBy(this.packagingList, ['type', 'mhNumber']);
+    this.showAddPackagingNo = false;
+    this.calculateLoadInfo();
+  }
+
+  calculateTotalOrderUnits(balance: any) {
+    balance.totalUnits = balance.orderUnits + Math.ceil(balance.orderUnfinishedPcs / balance.distrQty);
+    this.calculateLoadInfo();
+  }
+
+  getSelectedMhNumber() {
+    return _.find(this.eligiblePackagingNos, {mhNumber: this.returnOrderPackaging.mhNumber});
+  }
+
+  clearData(pack: OrderPackagings) {
+    this.initializeVO(pack);
+    this.calculateLoadInfo();
+  }
+
+  getPackagingList() {
+    return _.filter(this.packagingList, balance => balance.totalUnits > 0);
+  }
+
+  calculateLoadInfo() {
+    this.returnOrder.packagingList = this.getPackagingList();
+    const transportType = _.find(this.transportTypes, {transportTypeId: this.selectedRoute.transportType.transportTypeId});
+    this.returnOrder.orderSpecs = NileUtils.calculateLoad(OrderType.RETURN, this.returnOrder.packagingList, transportType);
+  }
+
+  initializeVO(vo: OrderPackagings) {
+    vo.orderUnits = 0;
+    vo.orderUnfinishedPcs = 0;
+    vo.totalUnits = 0;
+    vo.totalImages = 0;
+    vo.stdOutPackIncl = false;
+    this.imageRepository.delete(vo.mhNumber);
+  }
+
+  getMHNumberDetails() {
+    const mhNumber: Packaging = this.getSelectedMhNumber();
+    this.returnOrderPackaging.description = mhNumber.description;
+    this.returnOrderPackaging.distrQty = mhNumber.distrQty;
+    this.returnOrderPackaging.distrGrossWeight = mhNumber.distrGrossWeight;
+    this.returnOrderPackaging.distrVolume = mhNumber.distrVolume;
+    this.damagedPackaging = !NileUtils.isNumber(mhNumber.distrQty) || !NileUtils.isNumber(mhNumber.distrGrossWeight) || !NileUtils.isNumber(mhNumber.distrVolume);
+  }
+
+  getOrderOverview() {
+    if (this.returnOrderForm.valid && this.returnOrder.pickupAddressId && this.returnOrder.packagingList.length > 0
+      && this.returnOrder.orderSpecs.truckQty <= 1 && this.imageRepository.size === this.returnOrder.packagingList.length) {
+      this.orderOverview = new OrderOverview();
+      this.setPickupCalendar();
+      this.returnOrder.contactEmail = this.returnOrderForm.value.contactEmail;
+      this.returnOrder.packagingList = this.getPackagingList();
+      this.returnOrder.orderId = 0;
+      this.pickupDate = null;
+      this.returnOrder.pickupDates = null;
+      this.returnOrder.reason = null;
+      this.returnOrderForm.controls.reasonName.setValue(null);
+      this.returnOrderForm.controls.customReason.setValue(null);
+      this.are3DaysOpen = false;
+      this.showOrderOverview = true;
+    }
+  }
+
+  orderAction(action: string) {
+    if (action === 'edit') {
+      if (this.returnOrder.orderId !== 0) {
+        this.resetPackagingList();
+      }
+      this.showOrderConfirmation = false;
+      this.showOrderOverview = false;
+    } else if (action === 'orderOverview' && this.are3DaysOpen && this.returnOrderForm.valid &&
+      this.returnOrder.pickupDates && this.returnOrderForm.value.reasonName) {
+      if (this.returnOrderForm.value.reasonName !== 'Other' || (this.returnOrderForm.value.reasonName === 'Other' && this.returnOrderForm.value.customReason)) {
+        this.returnOrder.contactPhone = this.returnOrderForm.value.countryCode.dialCode + '' + this.returnOrderForm.value.contactPhone;
+        this.orderOverview = NileConverter.setOrderOverview(this.returnOrder, this.supplier, null);
+        this.showOrderConfirmation = true;
+      }
+    } else if (this.returnOrderForm.valid && action === 'confirm' && !this.orderCreationInProgress) {
+      this.saveOrder();
+    } else if (action === 'done') {
+      this.showOrderOverview = false;
+      this.showOrderConfirmation = false;
+      this.returnOrder.orderId = 0;
+      this.resetPackagingList();
+    }
+  }
+
+  resetPackagingList() {
+    _.forEach(this.packagingList, pack => {
+      pack.orderUnits = 0;
+      pack.orderPcs = 0;
+      pack.orderUnfinishedPcs = 0;
+      pack.totalUnits = 0;
+      pack.totalImages = 0;
+      pack.stdOutPackIncl = false;
+    });
+    this.returnOrder.packagingList = null;
+    this.returnOrder.remarks = null;
+    this.imageRepository = new Map<string, any[]>();
+    this.returnOrder.orderSpecs = new LoadMeters();
+  }
+
+  private setPickupCalendar() {
+    const planningDays = 2;
+    const pickupDays = 2;
+    const leadTime = this.selectedRoute.transportLeadTime;
+    const lastPlanningDay = _.last(NileCalendarDateUtils.getNoOfWorkingDaysFromDate(new Date(), planningDays, this.closedDates));
+    const lastPickupDay = _.last(NileCalendarDateUtils.getNoOfWorkingDaysFromDate(new Date(lastPlanningDay), pickupDays, this.closedDates));
+    const lastLeadDay = _.last(NileCalendarDateUtils.getNoOfWorkingDaysFromDate(new Date(lastPickupDay), leadTime, this.closedDates));
+
+    this.minCalendarDate = new Date(lastLeadDay);
+
+    this.customCalendar = new NileCustomCalendar();
+    this.customCalendar.closedDates = this.closedDates;
+    this.customCalendar.disabledDates = NileCalendarDateUtils.convertStringToDate(this.closedDates);
+    this.customCalendar.selectedDates = [];
+    this.customCalendar.numberOfMonths = 4;
+    this.customCalendar.previousMonths = 0;
+    this.customCalendar.nextMonths = 1;
+    this.customCalendar.minCalendarDate = this.minCalendarDate;
+    this.customCalendar.calendarType = CalendarType.outbound_order;
+    this.customCalendar.showLegends = true;
+    this.pickupDate = null;
+  }
+
+  setPickupRange(selectedDate: any) {
+    this.pickupDate = selectedDate;
+    this.customCalendar.selectedDates = [];
+    const noOfNextPickupDays = 2; // Pickup date is inclusive
+
+    let next4Days = NileCalendarDateUtils.getNoOfDaysFromDate(this.pickupDate, 4, this.closedDates); // Maximum of 4 iterations
+    let lastDay = _.last(next4Days);
+    this.setNext4Days(next4Days);
+
+    while (this.customCalendar.selectedDates.length < noOfNextPickupDays && !_.isEmpty(next4Days)) {
+      next4Days = NileCalendarDateUtils.getNoOfDaysFromDate(new Date(lastDay), 4, this.closedDates);
+      lastDay = _.last(next4Days);
+      this.setNext4Days(next4Days);
+    }
+
+    this.customCalendar.selectedDates = this.customCalendar.selectedDates.slice(0, noOfNextPickupDays);
+    this.customCalendar.selectedDates.unshift(NileCalendarDateUtils.getFormattedMomentDate(this.pickupDate));
+    this.returnOrder.pickupDates = [moment(this.pickupDate).utc(true).toDate(), moment(_.last(this.customCalendar.selectedDates, 'YYYY/M/D'), 'YYYY/M/D').utc(true).toDate()];
+    this.are3DaysOpen = this.customCalendar.selectedDates.length >= 3;
+  }
+
+  setNext4Days(next4Days: string[]) {
+    if (!_.isEmpty(next4Days)) {
+      const nextAvailableDays = _(next4Days);
+      let nextDay = nextAvailableDays.next();
+      do {
+        this.customCalendar.selectedDates.push(nextDay.value);
+        nextDay = nextAvailableDays.next();
+      } while (!nextDay.done);
+    }
+  }
+
+  getImageUpload(balance: any) {
+    this.nileFileUpload = new NileFileUpload();
+    this.nileFileUpload.uploadFileType = NileFileUploadType.IMAGES;
+    this.nileFileUpload.fileLimit = 5;
+    this.nileFileUpload.files = [];
+    this.nileFileUpload.id = balance.mhNumber;
+    this.nileFileUpload.files = this.imageRepository.get(balance.mhNumber) ? this.imageRepository.get(balance.mhNumber) : [];
+
+    this.returnOrderPackaging = _.find(this.returnOrder.packagingList, {mhNumber: balance.mhNumber});
+    this.showUploadImage = true;
+  }
+
+  addImages(files: File[]) {
+    const packaging = _.find(this.returnOrder.packagingList, {mhNumber: this.returnOrderPackaging.mhNumber});
+    packaging.totalImages = files.length;
+    this.imageRepository.set(this.nileFileUpload.id, files);
+    this.showUploadImage = false;
+  }
+
+  removeImages(files: File[]) {
+    const packaging = _.find(this.returnOrder.packagingList, {mhNumber: this.returnOrderPackaging.mhNumber});
+    packaging.totalImages = files.length;
+    this.imageRepository.set(this.nileFileUpload.id, files);
+  }
+
+  removeAllImages(id: string) {
+    this.returnOrderPackaging.totalImages = 0;
+    this.imageRepository.delete(id);
+    this.showUploadImage = false;
+  }
+
+  filterCountry(event) {
+    this.filteredCountries = NileUtils.filterCountry(event, this.countryCodes);
+  }
+
+  private saveOrder() {
+    this.orderCreationInProgress = true;
+    const formData = NileUtils.setImages(this.imageRepository);
+    this.returnOrder.pickupAddressId = this.returnOrderForm.value.pickupAddressId;
+    this.returnOrder.contactPhone = this.returnOrderForm.value.countryCode.dialCode + '' + this.returnOrderForm.value.contactPhone;
+    if (this.returnOrderForm.get('reasonName').value === 'Other') {
+      this.returnOrder.reason = this.returnOrderForm.get('customReason').value;
+    } else {
+      this.returnOrder.reason = this.returnOrderForm.get('reasonName').value;
+    }
+    this.returnOrderService.createOrder(this.returnOrder).subscribe(
+      data => {
+        this.returnOrder.orderId = data;
+        this.toastService.showSuccessToast('Order Created Successfully.', 'Order created successfully with the order Id: ' + this.returnOrder.orderId, 60 * 1000, true);
+        this.orderCreationInProgress = false;
+
+        this.toastService.showInfoToast('Save', 'Saving Images');
+
+        this.returnOrderService.saveReturnOrderImages(this.returnOrder.orderId, formData).subscribe(res => {
+            this.toastService.showSuccessToast('Upload', 'Images uploaded Successfully');
+          },
+          error => {
+            this.toastService.showFailureToast('Images Upload Failed', 'Image upload is failed. Please send the images to packaging.planning@scania.com along with order number.', 60 * 1000, true);
+          });
+      },
+      (error) => {
+        this.toastService.showFailureToast('Error occurred while creating the order', error.error.message);
+        this.orderCreationInProgress = false;
+      });
+  }
+
+  public openResetConfirmation() {
+    this.confirmationService.confirm({
+      message: 'Are you sure that you want to reset form?',
+      header: 'Reset Confirmation',
+      acceptButtonStyleClass: 'btn btn-primary',
+      rejectButtonStyleClass: 'float-left btn btn-outline-dark',
+      accept: () => {
+        this.resetPackagingList();
+      },
+      reject: () => {
+        // do nothing
+      },
+    });
+  }
+}
